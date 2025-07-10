@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
@@ -30,14 +31,33 @@ func (t *GC) Run(ctx context.Context) {
 	}
 }
 
-// func (t *GC) RunCompaction() {
-// 	level0, err := t.mf.GetLSM().GetLevel(0)
-// 	if err != nil {
-// 		fmt.Println(err)
-// 	}
+type CompactionStrategyOpts interface {
+}
 
-// 	table0, err := level0.GetTable(0)
+type CompactionStrategy interface {
+	Run(*metadata.Manifest, int)
+}
 
-// 	size, err := utils.DirSize(table0.Path)
+type SizeTiredCompactionOpts struct {
+	Levle0MaxSizeInBytes       int64
+	MaxSizeInBytesGrowthFactor int32
+}
 
-// }
+type SizeTiredCompaction struct {
+	Opts SizeTiredCompactionOpts
+}
+
+// WIP
+func (t *SizeTiredCompaction) Run(mf *metadata.Manifest, l int) {
+	levelL, err := mf.GetLSM().GetLevel(l)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// path := mf.GetLevelPath(l)
+	size := levelL.SizeInBytes.Load()
+	if int64(size) > t.Opts.Levle0MaxSizeInBytes*max(int64(l)*int64(t.Opts.MaxSizeInBytesGrowthFactor), 1) {
+
+	}
+
+}

@@ -3,10 +3,13 @@ package metadata
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 type Level struct {
 	tables []*SSTable
+
+	SizeInBytes atomic.Int64
 
 	// @todo: create separate locks for each field
 	mu *sync.RWMutex
@@ -21,6 +24,7 @@ func NewLevel() *Level {
 func (t *Level) AppendSSTable(table *SSTable) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.SizeInBytes.Add(table.SizeInBytes)
 	t.tables = append(t.tables, table)
 }
 

@@ -29,14 +29,17 @@ func NewMemtable[K utils.Key, V utils.Value](opts MemtableOpts) *Memtable[K, V] 
 	return mem
 }
 
-func (t *Memtable[K, V]) BuildPayloadList() []utils.Payload[K, V] {
+// @todo: optimize
+func (t *Memtable[K, V]) BuildPayloadList() ([]utils.Payload[K, V], int64) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	var pl []utils.Payload[K, V]
+	var size int64
 	for k, v := range t.data {
 		pl = append(pl, utils.Payload[K, V]{Key: k, Val: v})
+		size += int64(v.SizeOf())
 	}
-	return pl
+	return pl, size
 }
 
 func (t *Memtable[K, V]) Write(key K, value V) bool {

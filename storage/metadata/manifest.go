@@ -101,6 +101,14 @@ func (t *Manifest) GetPath(l, i int) string {
 	return path.Join(t.opts.Dir, t.lsm0.GetName(), fmt.Sprintf("level-%d", l), fmt.Sprintf("sst-%d.db", i))
 }
 
+func (t *Manifest) GetLevelPath(l int) string {
+	if l < 0 {
+		return ""
+	}
+
+	return path.Join(t.opts.Dir, t.lsm0.GetName(), fmt.Sprintf("level-%d", l))
+}
+
 // redundant: GetLSM().LevelsCount() should do this job
 func (t *Manifest) LevelSize(l int) (int, error) {
 	if t.lsm0.LevelsCount() <= l || l < 0 {

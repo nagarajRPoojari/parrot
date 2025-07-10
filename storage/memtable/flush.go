@@ -45,14 +45,15 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 	wt := manager.OpenForWrite(path)
 	defer wt.Close()
 
-	err := utils.Encode(wt.GetFile(), mem.BuildPayloadList())
+	pls, totalSizeInBytes := mem.BuildPayloadList()
+	err := utils.Encode(wt.GetFile(), pls)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// update manifest, should acquire write lock over level-0
 	lvl, _ := t.mf.GetLSM().GetLevel(0)
-	lvl.AppendSSTable(metadata.NewSSTable(path))
+	lvl.AppendSSTable(metadata.NewSSTable(path, totalSizeInBytes))
 
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
