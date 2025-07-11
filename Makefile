@@ -20,3 +20,11 @@ race_test:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+.PHONY: benchmark
+
+benchmark:
+	go test -bench=BenchmarkMemtable_Intensive_Write_And_Read -memprofile=mem.out ./benchmark
+	
+prof:
+	go tool pprof ./benchmark.test mem.out  

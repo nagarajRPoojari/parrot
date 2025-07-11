@@ -80,6 +80,7 @@ func BenchmarkRead(b *testing.B) {
 }
 
 func BenchmarkMemtable_Intensive_Write_And_Read(t *testing.B) {
+	log.SetOutput(io.Discard)
 
 	const MEMTABLE_THRESHOLD = 1024 * 2
 	temp := t.TempDir()
