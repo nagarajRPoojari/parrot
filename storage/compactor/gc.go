@@ -11,10 +11,10 @@ import (
 
 type GC[K types.Key, V types.Value] struct {
 	mf    *metadata.Manifest
-	cache *cache.DecoderCacheManager[K, V]
+	cache *cache.CacheManager[K, V]
 }
 
-func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.DecoderCacheManager[K, V]) *GC[K, V] {
+func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.CacheManager[K, V]) *GC[K, V] {
 	return &GC[K, V]{mf, cache}
 }
 

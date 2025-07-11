@@ -12,14 +12,18 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
+// TestMemtable_Write_And_Read_In_Mem verifies that a key-value pair
+// written to the memtable can be read back correctly from memory,
+// without triggering a flush to disk.
 func TestMemtable_Write_And_Read_In_Mem(t *testing.T) {
+	log.SetOutput(io.Discard)
+
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: t.TempDir()})
 	mts := NewMemtableStore[types.StringKey, types.StringValue](mf, MemtableOpts{MemtableSoftLimit: 1024, QueueHardLimit: 10})
 	k, v := types.StringKey{K: "key-0"}, types.StringValue{V: "val-0"}
 	mts.Write(k, v)
 
 	log.Println("Write successfull")
-
 	val, ok := mts.Read(k)
 
 	if !ok || val != v {
@@ -27,7 +31,12 @@ func TestMemtable_Write_And_Read_In_Mem(t *testing.T) {
 	}
 }
 
+// TestMemtable_Write_Overflow_Trigger_Flush ensures that writing enough
+// entries to exceed the memtable soft limit triggers a flush to disk.
+// It then verifies that a previously written key can still be read back
+// after clearing the in-memory state.
 func TestMemtable_Write_Overflow_Trigger_Flush(t *testing.T) {
+	log.SetOutput(io.Discard)
 
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: t.TempDir()})
 	mf.Load()
@@ -60,13 +69,21 @@ func TestMemtable_Write_Overflow_Trigger_Flush(t *testing.T) {
 	if !ok || val != v {
 		t.Errorf("Expected %v, got %v", v, val)
 	}
-
 }
 
+// TestMemtable_Write_With_Multiple_Reader verifies concurrent read access
+// to keys written before and after a memtable flush. It ensures that flushed
+// data can still be read concurrently by multiple readers.
+// Note:
+//
+//   - memtable/sst size is set to 1kb
+//   - max concurrent readers limited to 5000
 func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
 	log.SetOutput(io.Discard)
 
 	const MEMTABLE_THRESHOLD = 1024
+	const MAX_CONCURRENT_READ_ROUTINES = 5000
+
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: t.TempDir()})
 	mf.Load()
 
@@ -91,9 +108,16 @@ func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	wg := sync.WaitGroup{}
 
+	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
 	for i := range int(MEMTABLE_THRESHOLD / d.SizeOf()) {
 		wg.Add(1)
 		func(i int) {
+			ticket <- struct{}{} // acquire a ticket
+			defer func() {
+				<-ticket // release the ticket
+				wg.Done()
+			}()
+
 			val, ok := mts.Read(types.IntKey{K: i + 10})
 			v := types.IntValue{V: int32(i + 10)}
 			if !ok || val != v {
@@ -106,10 +130,19 @@ func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
 
 }
 
+// TestMemtable_Intensive_Write_And_Read verifies heavy concurrent read access
+// to keys written before and after a memtable flush.
+// Similar to TestMemtable_Write_With_Multiple_Reader but with more load.
+// Note:
+//
+//   - memtable/sst size is set to 1mb
+//   - max concurrent readers limited to 5000
 func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 	log.SetOutput(io.Discard)
 
 	const MEMTABLE_THRESHOLD = 1024 * 1024
+	const MAX_CONCURRENT_READ_ROUTINES = 5000
+
 	temp := t.TempDir()
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})
 	mf.Load()
@@ -135,10 +168,17 @@ func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 	time.Sleep(1000 * time.Millisecond)
 	wg := sync.WaitGroup{}
 
+	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
+
 	for i := 0; i < totalOps; i++ {
 		wg.Add(1)
 		go func(i int) {
-			defer wg.Done()
+			ticket <- struct{}{} // acquire a ticket
+			defer func() {
+				<-ticket // release the ticket
+				wg.Done()
+			}()
+
 			val, ok := mts.Read(types.IntKey{K: i})
 			v := types.IntValue{V: int32(i)}
 			if !ok || val != v {

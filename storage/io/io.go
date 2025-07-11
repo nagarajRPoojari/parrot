@@ -52,7 +52,9 @@ func (t *FileWriter) Write(data []byte) {
 type FileManager struct {
 	sharedFileReadersMap map[string]*FileReader
 	lockMap              map[string]*sync.Mutex
-	globalMu             sync.Mutex
+
+	// globalMu prevents multiple goroutines creating same instance
+	globalMu sync.Mutex
 }
 
 func newFileManager() *FileManager {

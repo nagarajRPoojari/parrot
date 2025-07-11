@@ -12,40 +12,43 @@ import (
 	fio "github.com/nagarajRPoojari/lsm/storage/io"
 )
 
-type DecoderCacheManager[K types.Key, V types.Value] struct {
+type CacheManager[K types.Key, V types.Value] struct {
+	// using sync.Map to prevent race
 	cache sync.Map
 }
 
-func NewDecoderCacheManager[K types.Key, V types.Value]() *DecoderCacheManager[K, V] {
-	return &DecoderCacheManager[K, V]{
+func NewCacheManager[K types.Key, V types.Value]() *CacheManager[K, V] {
+	return &CacheManager[K, V]{
 		cache: sync.Map{},
 	}
 }
 
-func (m *DecoderCacheManager[K, V]) Get(path string) ([]types.Payload[K, V], error) {
+func (m *CacheManager[K, V]) Get(path string) ([]types.Payload[K, V], error) {
 	val, loaded := m.cache.Load(path)
 	if loaded {
-		return val.(*DecoderCache[K, V]).GetDecoded()
+		return val.(*CacheUnit[K, V]).GetDecoded()
 	}
 	fm := fio.GetFileManager()
 	fr := fm.OpenForRead(path)
 
 	// Create new cache and use LoadOrStore to avoid race
-	newCache := &DecoderCache[K, V]{payload: fr.GetPayload()}
+	newCache := &CacheUnit[K, V]{payload: fr.GetPayload()}
 	actual, _ := m.cache.LoadOrStore(path, newCache)
 
-	return actual.(*DecoderCache[K, V]).GetDecoded()
+	return actual.(*CacheUnit[K, V]).GetDecoded()
 }
 
-type DecoderCache[K types.Key, V types.Value] struct {
+type CacheUnit[K types.Key, V types.Value] struct {
+	// payload directly maps to mmap page (shared with multiple readers)
 	payload []byte
 
-	once    sync.Once
+	once sync.Once
+	// decoded version of loaded payload
 	decoded []types.Payload[K, V]
 	err     error
 }
 
-func (dc *DecoderCache[K, V]) GetDecoded() ([]types.Payload[K, V], error) {
+func (dc *CacheUnit[K, V]) GetDecoded() ([]types.Payload[K, V], error) {
 	dc.once.Do(func() {
 		var result []types.Payload[K, V]
 		decoder := gob.NewDecoder(bytes.NewReader(dc.payload))

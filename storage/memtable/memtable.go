@@ -72,7 +72,7 @@ type MemtableStore[K types.Key, V types.Value] struct {
 	flusher *Flusher[K, V]
 	opts    MemtableOpts
 
-	decoder *cache.DecoderCacheManager[K, V]
+	decoder *cache.CacheManager[K, V]
 }
 
 func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts MemtableOpts) *MemtableStore[K, V] {
@@ -94,7 +94,7 @@ func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts Me
 		opts:    opts,
 		flusher: flusher,
 		memNode: node,
-		decoder: cache.NewDecoderCacheManager[K, V](),
+		decoder: cache.NewCacheManager[K, V](),
 	}
 }
 
@@ -138,14 +138,12 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 	c := 0
 	for node != nil {
 		if v, ok := node.mem.Read(key); ok {
-			// log.Println("read from memtable")
 			return v, true
 		}
 		node = node.Prev
 		c++
 	}
 
-	// log.Println("Started reading from sstables")
 	// Search backward at all sst
 	level, _ := t.mf.GetLSM().GetLevel(0)
 	cnt := 0
@@ -159,7 +157,6 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 			// @todo: use min/max lookup to avoid full table search
 			for _, k := range l {
 				if k.Key == key {
-					// log.Println("Read key-val from sst")
 					return k.Val, true
 				}
 			}
