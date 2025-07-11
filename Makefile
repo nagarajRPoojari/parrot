@@ -21,10 +21,22 @@ race_test:
 clean:
 	rm -rf $(BIN_DIR)
 
-.PHONY: benchmark
+.PHONY: benchmark benchmark_read benchmark_write
 
 benchmark:
-	go test -bench=BenchmarkMemtable_Intensive_Write_And_Read -memprofile=mem.out ./benchmark
-	
+ifeq ($(filter read,$(MAKECMDGOALS)),read)
+	@echo "Running read benchmark..."
+	go test -bench=BenchmarkMemtable_Intensive_Read -memprofile=mem.out ./benchmark
+else ifeq ($(filter write,$(MAKECMDGOALS)),write)
+	@echo "Running write benchmark..."
+	go test -bench=BenchmarkMemtable_Intensive_Write -memprofile=mem.out ./benchmark
+else
+	@echo "Usage: make benchmark read | write"
+endif
+
+read:
+write:
+
+
 prof:
 	go tool pprof ./benchmark.test mem.out  
