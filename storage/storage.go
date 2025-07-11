@@ -3,23 +3,15 @@ package storage
 import (
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
-	"github.com/nagarajRPoojari/lsm/storage/utils"
+	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
-type Storage[K comparable, V utils.Value] struct {
+type Storage[K types.Key, V types.Value] struct {
 	name string
 	mt   *memtable.MemtableStore[K, V]
 }
 
-type StringValue struct {
-	v string
-}
-
-func (t StringValue) SizeOf() uintptr {
-	return uintptr(len(t.v))
-}
-
-func NewStorage[K comparable, V utils.Value](name string) *Storage[K, V] {
+func NewStorage[K types.Key, V types.Value](name string) *Storage[K, V] {
 	v := &Storage[K, V]{name: name}
 	v.createOrLoadCollection()
 	return v

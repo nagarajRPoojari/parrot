@@ -5,20 +5,21 @@ import (
 
 	"github.com/nagarajRPoojari/lsm/storage/io"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
+	"github.com/nagarajRPoojari/lsm/storage/types"
 	"github.com/nagarajRPoojari/lsm/storage/utils"
 )
 
 type FlusherOpts struct {
 }
 
-type Flusher[K utils.Key, V utils.Value] struct {
+type Flusher[K types.Key, V types.Value] struct {
 	q  *Queue[K, V]
 	mf *metadata.Manifest
 
 	opts FlusherOpts
 }
 
-func NewFlusher[K utils.Key, V utils.Value](q *Queue[K, V], mf *metadata.Manifest, opts FlusherOpts) *Flusher[K, V] {
+func NewFlusher[K types.Key, V types.Value](q *Queue[K, V], mf *metadata.Manifest, opts FlusherOpts) *Flusher[K, V] {
 	return &Flusher[K, V]{
 		opts: opts,
 		q:    q,

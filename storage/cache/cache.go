@@ -7,22 +7,22 @@ import (
 	"io"
 	"sync"
 
-	"github.com/nagarajRPoojari/lsm/storage/utils"
+	"github.com/nagarajRPoojari/lsm/storage/types"
 
 	fio "github.com/nagarajRPoojari/lsm/storage/io"
 )
 
-type DecoderCacheManager[K utils.Key, V utils.Value] struct {
+type DecoderCacheManager[K types.Key, V types.Value] struct {
 	cache sync.Map
 }
 
-func NewDecoderCacheManager[K utils.Key, V utils.Value]() *DecoderCacheManager[K, V] {
+func NewDecoderCacheManager[K types.Key, V types.Value]() *DecoderCacheManager[K, V] {
 	return &DecoderCacheManager[K, V]{
 		cache: sync.Map{},
 	}
 }
 
-func (m *DecoderCacheManager[K, V]) Get(path string) ([]utils.Payload[K, V], error) {
+func (m *DecoderCacheManager[K, V]) Get(path string) ([]types.Payload[K, V], error) {
 	val, loaded := m.cache.Load(path)
 	if loaded {
 		return val.(*DecoderCache[K, V]).GetDecoded()
@@ -37,21 +37,21 @@ func (m *DecoderCacheManager[K, V]) Get(path string) ([]utils.Payload[K, V], err
 	return actual.(*DecoderCache[K, V]).GetDecoded()
 }
 
-type DecoderCache[K utils.Key, V utils.Value] struct {
+type DecoderCache[K types.Key, V types.Value] struct {
 	payload []byte
 
 	once    sync.Once
-	decoded []utils.Payload[K, V]
+	decoded []types.Payload[K, V]
 	err     error
 }
 
-func (dc *DecoderCache[K, V]) GetDecoded() ([]utils.Payload[K, V], error) {
+func (dc *DecoderCache[K, V]) GetDecoded() ([]types.Payload[K, V], error) {
 	dc.once.Do(func() {
-		var result []utils.Payload[K, V]
+		var result []types.Payload[K, V]
 		decoder := gob.NewDecoder(bytes.NewReader(dc.payload))
 
 		for {
-			var entry utils.Payload[K, V]
+			var entry types.Payload[K, V]
 			err := decoder.Decode(&entry)
 			if errors.Is(err, io.EOF) {
 				break

@@ -6,7 +6,7 @@ import (
 
 	"github.com/nagarajRPoojari/lsm/storage/cache"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
-	"github.com/nagarajRPoojari/lsm/storage/utils"
+	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
 type MemtableOpts struct {
@@ -15,7 +15,7 @@ type MemtableOpts struct {
 	QueueSoftLimit    int
 }
 
-type Memtable[K utils.Key, V utils.Value] struct {
+type Memtable[K types.Key, V types.Value] struct {
 	data map[K]V
 
 	// RWMutex to prevent concurrent io
@@ -23,19 +23,19 @@ type Memtable[K utils.Key, V utils.Value] struct {
 	opts MemtableOpts
 }
 
-func NewMemtable[K utils.Key, V utils.Value](opts MemtableOpts) *Memtable[K, V] {
+func NewMemtable[K types.Key, V types.Value](opts MemtableOpts) *Memtable[K, V] {
 	mem := &Memtable[K, V]{data: map[K]V{}, mu: &sync.RWMutex{}, opts: opts}
 	return mem
 }
 
 // @todo: optimize
-func (t *Memtable[K, V]) BuildPayloadList() ([]utils.Payload[K, V], int64) {
+func (t *Memtable[K, V]) BuildPayloadList() ([]types.Payload[K, V], int64) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	var pl []utils.Payload[K, V]
+	var pl []types.Payload[K, V]
 	var size int64
 	for k, v := range t.data {
-		pl = append(pl, utils.Payload[K, V]{Key: k, Val: v})
+		pl = append(pl, types.Payload[K, V]{Key: k, Val: v})
 		size += int64(v.SizeOf())
 	}
 	return pl, size
@@ -59,7 +59,7 @@ func (t *Memtable[K, V]) Read(key K) (V, bool) {
 	return val, ok
 }
 
-type MemtableStore[K utils.Key, V utils.Value] struct {
+type MemtableStore[K types.Key, V types.Value] struct {
 	mf *metadata.Manifest
 	q  *Queue[K, V]
 
@@ -75,7 +75,7 @@ type MemtableStore[K utils.Key, V utils.Value] struct {
 	decoder *cache.DecoderCacheManager[K, V]
 }
 
-func NewMemtableStore[K utils.Key, V utils.Value](mf *metadata.Manifest, opts MemtableOpts) *MemtableStore[K, V] {
+func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts MemtableOpts) *MemtableStore[K, V] {
 	q := NewQueue[K, V](QueueOpts{HardLimit: opts.QueueHardLimit})
 	mem := NewMemtable[K, V](opts)
 	node := NewNode(mem)
@@ -159,7 +159,7 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 			// @todo: use min/max lookup to avoid full table search
 			for _, k := range l {
 				if k.Key == key {
-					log.Println("Read key-val from sst")
+					// log.Println("Read key-val from sst")
 					return k.Val, true
 				}
 			}

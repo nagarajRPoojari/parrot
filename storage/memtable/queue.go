@@ -5,10 +5,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/nagarajRPoojari/lsm/storage/utils"
+	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
-type Node[K utils.Key, V utils.Value] struct {
+type Node[K types.Key, V types.Value] struct {
 	Next *Node[K, V]
 	Prev *Node[K, V]
 
@@ -18,7 +18,7 @@ type Node[K utils.Key, V utils.Value] struct {
 	immutable sync.RWMutex
 }
 
-func NewNode[K utils.Key, V utils.Value](mem *Memtable[K, V]) *Node[K, V] {
+func NewNode[K types.Key, V types.Value](mem *Memtable[K, V]) *Node[K, V] {
 	return &Node[K, V]{
 		mem:       mem,
 		immutable: sync.RWMutex{},
@@ -30,7 +30,7 @@ type QueueOpts struct {
 	HardLimit int
 }
 
-type Queue[K utils.Key, V utils.Value] struct {
+type Queue[K types.Key, V types.Value] struct {
 	head *Node[K, V]
 	tail *Node[K, V]
 
@@ -42,7 +42,7 @@ type Queue[K utils.Key, V utils.Value] struct {
 	opts QueueOpts
 }
 
-func NewQueue[K utils.Key, V utils.Value](opts QueueOpts) *Queue[K, V] {
+func NewQueue[K types.Key, V types.Value](opts QueueOpts) *Queue[K, V] {
 	return &Queue[K, V]{
 		opts: opts,
 	}

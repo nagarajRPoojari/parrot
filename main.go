@@ -15,6 +15,7 @@ import (
 
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
+	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
 func main() {
@@ -48,21 +49,6 @@ func main() {
 	}
 }
 
-type StringValue struct {
-	v string
-}
-
-func (t StringValue) SizeOf() uintptr {
-	return uintptr(len(t.v))
-}
-
-type IntValue struct {
-	V int32
-}
-
-func (t IntValue) SizeOf() uintptr {
-	return 4
-}
 func Run() {
 	const MEMTABLE_THRESHOLD = 1024
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: os.TempDir()})
@@ -74,17 +60,17 @@ func Run() {
 	go mf.Sync(ctx)
 
 	// overflow first memtable to trigger flush
-	mts := memtable.NewMemtableStore[int, IntValue](mf, memtable.MemtableOpts{MemtableSoftLimit: MEMTABLE_THRESHOLD})
-	d := IntValue{0}
+	mts := memtable.NewMemtableStore[types.IntKey, types.IntValue](mf, memtable.MemtableOpts{MemtableSoftLimit: MEMTABLE_THRESHOLD})
+	d := types.IntValue{V: 0}
 
 	for i := range int(MEMTABLE_THRESHOLD / d.SizeOf()) {
-		mts.Write(i, IntValue{V: int32(i)})
+		mts.Write(types.IntKey{K: i}, types.IntValue{V: int32(i)})
 	}
 
 	max := 10000
 
 	for i := range max {
-		mts.Write(i, IntValue{V: int32(i)})
+		mts.Write(types.IntKey{K: i}, types.IntValue{V: int32(i)})
 	}
 
 	// A small gap to let it flush to disk & erase
@@ -98,8 +84,8 @@ func Run() {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			val, ok := mts.Read(i)
-			v := IntValue{int32(i)}
+			val, ok := mts.Read(types.IntKey{K: i})
+			v := types.IntValue{int32(i)}
 			if !ok || val != v {
 				fmt.Printf("Expected %v, got %v", v, val)
 			}

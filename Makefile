@@ -37,6 +37,7 @@ endif
 read:
 write:
 
+.PHONY: prof
 
 prof:
 	go tool pprof ./benchmark.test mem.out  
