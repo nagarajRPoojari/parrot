@@ -71,7 +71,7 @@ func (t *Queue[K, V]) Push(node *Node[K, V]) {
 
 }
 
-func (t *Queue[K, V]) Pop() (*Memtable[K, V], error) {
+func (t *Queue[K, V]) Pop(callback func(*Memtable[K, V])) (*Memtable[K, V], error) {
 
 	t.headLock.Lock()
 	defer t.headLock.Unlock()
@@ -92,6 +92,8 @@ func (t *Queue[K, V]) Pop() (*Memtable[K, V], error) {
 		t.tailLock.Lock()
 		defer t.tailLock.Unlock()
 	}
+
+	callback(ret.mem)
 
 	if t.head == t.tail {
 		t.head = nil

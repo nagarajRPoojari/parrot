@@ -1,14 +1,9 @@
 package utils
 
 import (
-	"bytes"
 	"encoding/gob"
-	"errors"
-	"io"
 	"os"
 	"unsafe"
-
-	fio "github.com/nagarajRPoojari/lsm/storage/io"
 )
 
 type Value interface {
@@ -42,23 +37,4 @@ func Encode[K Key, V Value](file *os.File, kv []Payload[K, V]) error {
 		}
 	}
 	return nil
-}
-
-func Decode[K Key, V Value](fr *fio.FileReader) ([]Payload[K, V], error) {
-	reader := bytes.NewReader(fr.GetPayload())
-	decoder := gob.NewDecoder(reader)
-
-	var payloads []Payload[K, V]
-	for {
-		var entry Payload[K, V]
-		err := decoder.Decode(&entry)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, err
-		}
-		payloads = append(payloads, entry)
-	}
-	return payloads, nil
 }

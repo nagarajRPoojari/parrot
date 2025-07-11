@@ -75,9 +75,19 @@ func (t *FileManager) openForSharedRead(path string) *FileReader {
 		log.Fatal(err)
 	}
 
-	mmapData, err := mmap.Map(f, mmap.RDONLY, 0)
+	info, err := f.Stat()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// empty files can't be opened through mmap
+	if info.Size() == 0 || info.IsDir() {
+		log.Fatalf("Invalid file for mmap: size=%d, isDir=%v", info.Size(), info.IsDir())
+	}
+
+	mmapData, err := mmap.Map(f, mmap.RDONLY, 0)
+	if err != nil {
+		log.Fatalf("unable to open mmap error=%v", err)
 	}
 
 	fileReader := &FileReader{payload: mmapData, file: f}

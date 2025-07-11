@@ -1,11 +1,10 @@
 package memtable
 
 import (
-	"fmt"
 	"log"
 	"sync"
 
-	"github.com/nagarajRPoojari/lsm/storage/io"
+	"github.com/nagarajRPoojari/lsm/storage/cache"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/utils"
 )
@@ -72,6 +71,8 @@ type MemtableStore[K utils.Key, V utils.Value] struct {
 
 	flusher *Flusher[K, V]
 	opts    MemtableOpts
+
+	decoder *cache.DecoderCacheManager[K, V]
 }
 
 func NewMemtableStore[K utils.Key, V utils.Value](mf *metadata.Manifest, opts MemtableOpts) *MemtableStore[K, V] {
@@ -93,6 +94,7 @@ func NewMemtableStore[K utils.Key, V utils.Value](mf *metadata.Manifest, opts Me
 		opts:    opts,
 		flusher: flusher,
 		memNode: node,
+		decoder: cache.NewDecoderCacheManager[K, V](),
 	}
 }
 
@@ -148,15 +150,16 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 	level, _ := t.mf.GetLSM().GetLevel(0)
 	cnt := 0
 	for level != nil {
-		for _, t := range level.GetTables() {
-			fm := io.GetFileManager()
-			fr := fm.OpenForRead(t.Path)
+		if len(level.GetTables()) == 0 {
+			break
+		}
+		for _, table := range level.GetTables() {
 
-			l, _ := utils.Decode[K, V](fr)
+			l, _ := t.decoder.Get(table.Path)
 			// @todo: use min/max lookup to avoid full table search
 			for _, k := range l {
 				if k.Key == key {
-					// log.Println("Read key-val from sst")
+					log.Println("Read key-val from sst")
 					return k.Val, true
 				}
 			}
@@ -165,7 +168,6 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 		level, _ = t.mf.GetLSM().GetLevel(1)
 		cnt++
 	}
-	fmt.Println("can't find with nodes, levels", c, cnt)
 	var empty V
 	return empty, false
 }

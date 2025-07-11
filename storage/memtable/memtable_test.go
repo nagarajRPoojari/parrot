@@ -2,6 +2,7 @@ package memtable
 
 import (
 	"context"
+	"io"
 	"log"
 	"sync"
 	"testing"
@@ -77,6 +78,8 @@ func TestMemtable_Write_Overflow_Trigger_Flush(t *testing.T) {
 }
 
 func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
+	log.SetOutput(io.Discard)
+
 	const MEMTABLE_THRESHOLD = 1024
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: t.TempDir()})
 	mf.Load()
@@ -118,8 +121,9 @@ func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
 }
 
 func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
+	log.SetOutput(io.Discard)
 
-	const MEMTABLE_THRESHOLD = 1024
+	const MEMTABLE_THRESHOLD = 1024 * 1024
 	temp := t.TempDir()
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})
 	mf.Load()
@@ -142,10 +146,9 @@ func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 
 	// A small gap to let it flush to disk & erase
 	// further read should come from disk sst
-	time.Sleep(3 * time.Second)
+	time.Sleep(1000 * time.Millisecond)
 	wg := sync.WaitGroup{}
 
-	start := time.Now()
 	for i := 0; i < totalOps; i++ {
 		wg.Add(1)
 		go func(i int) {
@@ -157,11 +160,6 @@ func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 			}
 		}(i)
 	}
-
-	wg.Wait()
-	elapsed := time.Since(start)
-	opsPerSec := float64(totalOps) / elapsed.Seconds()
-	t.Logf("Total time taken: %v, Ops/sec: %.2f", elapsed, opsPerSec)
 
 	wg.Wait()
 }

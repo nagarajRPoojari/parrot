@@ -28,10 +28,7 @@ func NewFlusher[K utils.Key, V utils.Value](q *Queue[K, V], mf *metadata.Manifes
 
 func (t *Flusher[K, V]) Run() {
 	for {
-		mem, err := t.q.Pop()
-		if err == nil {
-			t.flush(mem)
-		}
+		t.q.Pop(t.flush)
 	}
 }
 
@@ -47,6 +44,10 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 
 	pls, totalSizeInBytes := mem.BuildPayloadList()
 	err := utils.Encode(wt.GetFile(), pls)
+
+	// Ensure all buffered data is flushed to disk through fsync system call
+	wt.GetFile().Sync()
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -62,5 +63,5 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 		delete(mem.data, k)
 	}
 
-	log.Println("deleted memtable")
+	log.Println("deleted memtable at ", path)
 }
