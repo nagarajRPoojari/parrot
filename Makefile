@@ -20,6 +20,8 @@ race_test:
 
 clean:
 	rm -rf $(BIN_DIR)
+	rm ./benchmark.test
+	rm mem.out
 
 .PHONY: benchmark benchmark_read benchmark_write
 
@@ -37,7 +39,10 @@ endif
 read:
 write:
 
-.PHONY: prof
+.PHONY: mem_prof go_prof
 
-prof:
+mem_prof:
 	go tool pprof ./benchmark.test mem.out  
+
+go_prof:
+	go tool pprof ./benchmark.test goroutine.prof

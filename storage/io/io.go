@@ -112,7 +112,7 @@ func (t *FileManager) getOrCreateLock(path string) *sync.Mutex {
 	return lock
 }
 
-// OpenForRead utilizes mmap for multiple read only ops
+// OpenForRead utilizes mmap for multiple read only ops,
 // mmap with SHARED_READ points to common page cache
 //
 // !Caution: might not in sync with data on disk

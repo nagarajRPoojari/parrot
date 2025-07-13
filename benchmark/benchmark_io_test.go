@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log"
+	"os"
+	"runtime/pprof"
 	"sync"
 	"testing"
 	"time"
@@ -58,8 +60,8 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 	for i := range totalOps {
 		wg.Add(1)
 
+		ticket <- struct{}{} // acquire a ticket
 		go func(i int) {
-			ticket <- struct{}{} // acquire a ticket
 			defer func() {
 				<-ticket // release the ticket
 				wg.Done()
@@ -77,6 +79,8 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 	elapsed := time.Since(start)
 	opsPerSec := float64(totalOps) / elapsed.Seconds()
 	t.Logf("Total time taken: %v, Ops/sec: %.2f", elapsed, opsPerSec)
+
+	dumpGoroutines()
 }
 
 // BenchmarkMemtable_Intensive_Write benchmarks intensive serial writes
@@ -114,4 +118,15 @@ func BenchmarkMemtable_Intensive_Write(t *testing.B) {
 	elapsed := time.Since(start)
 	opsPerSec := float64(totalOps) / elapsed.Seconds()
 	t.Logf("Total time taken: %v, Ops/sec: %.2f", elapsed, opsPerSec)
+
+	dumpGoroutines()
+}
+
+func dumpGoroutines() {
+	f, err := os.Create("../goroutine.prof")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	pprof.Lookup("goroutine").WriteTo(f, 1)
 }
