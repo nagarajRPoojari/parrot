@@ -7,9 +7,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/nagarajRPoojari/lsm/storage/types"
-
 	fio "github.com/nagarajRPoojari/lsm/storage/io"
+	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
 type CacheManager[K types.Key, V types.Value] struct {
@@ -29,7 +28,10 @@ func (m *CacheManager[K, V]) Get(path string) ([]types.Payload[K, V], error) {
 		return val.(*CacheUnit[K, V]).GetDecoded()
 	}
 	fm := fio.GetFileManager()
-	fr := fm.OpenForRead(path)
+	fr, err := fm.OpenForRead(path)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create new cache and use LoadOrStore to avoid race
 	newCache := &CacheUnit[K, V]{payload: fr.GetPayload()}

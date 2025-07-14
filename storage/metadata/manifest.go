@@ -8,6 +8,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
+
 	"github.com/nagarajRPoojari/lsm/storage/io"
 )
 
@@ -74,6 +76,7 @@ func (t *Manifest) Sync(ctx context.Context) error {
 			// reason: json needs struct to export fields with no locks
 			//		   lsm is rw protected through locks, using lsm directly might lead to data race
 			lsmView := t.lsm0.ToView()
+			log.Infof("Manifest LSM: %+v. %p\n", t.lsm0.levels, t.lsm0.levels)
 
 			data, err := json.Marshal(lsmView)
 			if err != nil {
@@ -83,17 +86,11 @@ func (t *Manifest) Sync(ctx context.Context) error {
 			fw := io.GetFileManager().OpenForWrite(filePath)
 			fw.Write(data)
 			fw.Close()
-
-			// @todo: remove
-			// info, err := os.Stat(filePath)
-			// if err != nil {
-			// } else {
-			// }
 		}
 	}
 }
 
-func (t *Manifest) GetPath(l, i int) string {
+func (t *Manifest) FormatPath(l, i int) string {
 	if l < 0 || i < 0 {
 		return ""
 	}
@@ -101,21 +98,12 @@ func (t *Manifest) GetPath(l, i int) string {
 	return path.Join(t.opts.Dir, t.lsm0.GetName(), fmt.Sprintf("level-%d", l), fmt.Sprintf("sst-%d.db", i))
 }
 
-func (t *Manifest) GetLevelPath(l int) string {
+func (t *Manifest) FormatLevelPath(l int) string {
 	if l < 0 {
 		return ""
 	}
 
 	return path.Join(t.opts.Dir, t.lsm0.GetName(), fmt.Sprintf("level-%d", l))
-}
-
-// redundant: GetLSM().LevelsCount() should do this job
-func (t *Manifest) LevelSize(l int) (int, error) {
-	if t.lsm0.LevelsCount() <= l || l < 0 {
-		return 0, fmt.Errorf("failed to get index")
-	}
-	level, _ := t.lsm0.GetLevel(l)
-	return level.Size(), nil
 }
 
 func (t *Manifest) GetLSM() *LSM {

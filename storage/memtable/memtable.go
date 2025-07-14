@@ -1,8 +1,9 @@
 package memtable
 
 import (
-	"log"
 	"sync"
+
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 
 	"github.com/nagarajRPoojari/lsm/storage/cache"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
@@ -72,7 +73,7 @@ type MemtableStore[K types.Key, V types.Value] struct {
 	flusher *Flusher[K, V]
 	opts    MemtableOpts
 
-	decoder *cache.CacheManager[K, V]
+	DecoderCache *cache.CacheManager[K, V]
 }
 
 func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts MemtableOpts) *MemtableStore[K, V] {
@@ -88,13 +89,13 @@ func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts Me
 	go flusher.Run()
 
 	return &MemtableStore[K, V]{
-		mf:      mf,
-		q:       q,
-		mem:     mem,
-		opts:    opts,
-		flusher: flusher,
-		memNode: node,
-		decoder: cache.NewCacheManager[K, V](),
+		mf:           mf,
+		q:            q,
+		mem:          mem,
+		opts:         opts,
+		flusher:      flusher,
+		memNode:      node,
+		DecoderCache: cache.NewCacheManager[K, V](),
 	}
 }
 
@@ -106,7 +107,7 @@ func (t *MemtableStore[K, V]) Clear() {
 // return value is true if flush is triggered
 func (t *MemtableStore[K, V]) Write(key K, value V) bool {
 	if ok := t.mem.Write(key, value); !ok {
-		log.Println("Memtable overflow")
+		log.Infof("Memtable overflow")
 
 		// create new memtable with same options
 		mem := NewMemtable[K, V](t.opts)
@@ -132,7 +133,7 @@ func (t *MemtableStore[K, V]) Write(key K, value V) bool {
 func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 	// Search backwards in Queue
 
-	// log.Println("Started reading from memtables")
+	log.Infof("Started reading from memtables")
 
 	node := t.q.tail
 	c := 0
@@ -148,12 +149,9 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 	level, _ := t.mf.GetLSM().GetLevel(0)
 	cnt := 0
 	for level != nil {
-		if len(level.GetTables()) == 0 {
-			break
-		}
 		for _, table := range level.GetTables() {
 
-			l, _ := t.decoder.Get(table.Path)
+			l, _ := t.DecoderCache.Get(table.Path)
 			// @todo: use min/max lookup to avoid full table search
 			for _, k := range l {
 				if k.Key == key {

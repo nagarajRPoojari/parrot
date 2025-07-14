@@ -3,6 +3,8 @@ package metadata
 import (
 	"fmt"
 	"sync"
+
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 )
 
 type LSM struct {
@@ -28,6 +30,8 @@ func (t *LSM) LevelsCount() int {
 }
 
 func (t *LSM) GetLevel(l int) (*Level, error) {
+	log.Infof("GetLevel() len=%d, l=%d\n", len(t.levels), l)
+
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	if len(t.levels) <= l || l < 0 {
@@ -40,6 +44,12 @@ func (t *LSM) GetName() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.name
+}
+
+func (t *LSM) AppendLevel() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.levels = append(t.levels, NewLevel())
 }
 
 // LSM snapshot

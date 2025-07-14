@@ -18,7 +18,7 @@ type Level struct {
 }
 
 func NewLevel() *Level {
-	return &Level{tables: []*SSTable{}, mu: &sync.RWMutex{}}
+	return &Level{tables: []*SSTable{}, mu: &sync.RWMutex{}, SizeInBytes: atomic.Int64{}}
 }
 
 func (t *Level) AppendSSTable(table *SSTable) {
@@ -34,7 +34,7 @@ func (t *Level) SetSSTable(i int, table *SSTable) {
 	t.tables[i] = table
 }
 
-func (t *Level) Size() int {
+func (t *Level) TablesCount() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return len(t.tables)
@@ -54,6 +54,20 @@ func (t *Level) GetTable(i int) (*SSTable, error) {
 		return nil, fmt.Errorf("failed to get index")
 	}
 	return t.tables[i], nil
+}
+
+// this wont release memory since reference to tables
+// need to be returned
+// !caution: clear mannualy for old
+func (t *Level) Clear(till int) []*SSTable {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	old := t.tables[:till]
+	t.tables = []*SSTable{}
+	t.SizeInBytes.Store(0)
+
+	return old
 }
 
 // Level snapshot

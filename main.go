@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -13,23 +11,28 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
+
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
 func main() {
+
+	log.Infof("hello %d", 189)
+
 	go http.ListenAndServe("localhost:6060", nil)
-	log.SetOutput(io.Discard)
+	log.Disable()
 
 	cpuFile, err := os.Create("prof/cpu.prof")
 	if err != nil {
-		log.Fatal("could not create CPU profile: ", err)
+		log.Fatalf("could not create CPU profile: %v", err)
 	}
 	defer cpuFile.Close()
 
 	if err := pprof.StartCPUProfile(cpuFile); err != nil {
-		log.Fatal("could not start CPU profile: ", err)
+		log.Fatalf("could not start CPU profile: %v", err)
 	}
 
 	Run()
@@ -38,14 +41,14 @@ func main() {
 
 	memFile, err := os.Create("prof/mem.prof")
 	if err != nil {
-		log.Fatal("could not create memory profile: ", err)
+		log.Fatalf("could not create memory profile: %v", err)
 	}
 	defer memFile.Close()
 
 	runtime.GC()
 
 	if err := pprof.WriteHeapProfile(memFile); err != nil {
-		log.Fatal("could not write memory profile: ", err)
+		log.Fatalf("could not write memory profile: %v", err)
 	}
 }
 

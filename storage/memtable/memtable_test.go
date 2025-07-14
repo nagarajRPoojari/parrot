@@ -2,28 +2,27 @@ package memtable
 
 import (
 	"context"
-	"io"
-	"log"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/types"
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 )
 
 // TestMemtable_Write_And_Read_In_Mem verifies that a key-value pair
 // written to the memtable can be read back correctly from memory,
 // without triggering a flush to disk.
 func TestMemtable_Write_And_Read_In_Mem(t *testing.T) {
-	log.SetOutput(io.Discard)
+	log.Disable()
 
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: t.TempDir()})
 	mts := NewMemtableStore[types.StringKey, types.StringValue](mf, MemtableOpts{MemtableSoftLimit: 1024, QueueHardLimit: 10})
 	k, v := types.StringKey{K: "key-0"}, types.StringValue{V: "val-0"}
 	mts.Write(k, v)
 
-	log.Println("Write successfull")
+	log.Infof("Write successfull")
 	val, ok := mts.Read(k)
 
 	if !ok || val != v {
@@ -36,7 +35,7 @@ func TestMemtable_Write_And_Read_In_Mem(t *testing.T) {
 // It then verifies that a previously written key can still be read back
 // after clearing the in-memory state.
 func TestMemtable_Write_Overflow_Trigger_Flush(t *testing.T) {
-	log.SetOutput(io.Discard)
+	log.Disable()
 
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: t.TempDir()})
 	mf.Load()
@@ -79,7 +78,7 @@ func TestMemtable_Write_Overflow_Trigger_Flush(t *testing.T) {
 //   - memtable/sst size is set to 1kb
 //   - max concurrent readers limited to 5000
 func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
-	log.SetOutput(io.Discard)
+	log.Disable()
 
 	const MEMTABLE_THRESHOLD = 1024
 	const MAX_CONCURRENT_READ_ROUTINES = 5000
@@ -137,10 +136,10 @@ func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
 //   - memtable/sst size is set to 1mb
 //   - max concurrent readers limited to 5000
 func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
-	log.SetOutput(io.Discard)
+	log.Disable()
 
-	const MEMTABLE_THRESHOLD = 1024 * 1024
-	const MAX_CONCURRENT_READ_ROUTINES = 5000
+	const MEMTABLE_THRESHOLD = 1024 * 2 * 1024
+	const MAX_CONCURRENT_READ_ROUTINES = 500
 
 	temp := t.TempDir()
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})

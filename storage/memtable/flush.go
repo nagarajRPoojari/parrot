@@ -1,7 +1,7 @@
 package memtable
 
 import (
-	"log"
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 
 	"github.com/nagarajRPoojari/lsm/storage/io"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
@@ -34,24 +34,23 @@ func (t *Flusher[K, V]) Run() {
 }
 
 func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
-	log.Printf("deleting %p \n", mem)
+	log.Infof("deleting %p \n", mem)
 
 	manager := io.GetFileManager()
-	size, _ := t.mf.LevelSize(0)
-	path := t.mf.GetPath(0, size)
+	l0, _ := t.mf.GetLSM().GetLevel(0)
+	path := t.mf.FormatPath(0, l0.TablesCount())
 
 	wt := manager.OpenForWrite(path)
 	defer wt.Close()
 
 	pls, totalSizeInBytes := mem.BuildPayloadList()
 	err := utils.Encode(wt.GetFile(), pls)
+	if err != nil {
+		log.Panicf("failed to encode & store, error=%v", err)
+	}
 
 	// Ensure all buffered data is flushed to disk through fsync system call
 	wt.GetFile().Sync()
-
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	// update manifest, should acquire write lock over level-0
 	lvl, _ := t.mf.GetLSM().GetLevel(0)
@@ -64,5 +63,5 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 		delete(mem.data, k)
 	}
 
-	log.Println("deleted memtable at ", path)
+	log.Infof("deleted memtable at %s", path)
 }

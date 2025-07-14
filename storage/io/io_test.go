@@ -18,7 +18,10 @@ func TestFileManager_WriteAndRead(t *testing.T) {
 	expected := []byte("Hello from FileWriter!\n")
 	writer.Write(expected)
 
-	reader := manager.OpenForRead(testFilePath)
+	reader, err := manager.OpenForRead(testFilePath)
+	if err != nil {
+		t.Errorf("Got unexpected error=%v", err)
+	}
 	defer reader.Close()
 
 	got := reader.payload
@@ -35,8 +38,14 @@ func TestFileManager_MultipleReadsReturnSameInstance(t *testing.T) {
 
 	manager := GetFileManager()
 
-	r1 := manager.OpenForRead(testFilePath)
-	r2 := manager.OpenForRead(testFilePath)
+	r1, err := manager.OpenForRead(testFilePath)
+	if err != nil {
+		t.Errorf("Got unexpected error=%v", err)
+	}
+	r2, err := manager.OpenForRead(testFilePath)
+	if err != nil {
+		t.Errorf("Got unexpected error=%v", err)
+	}
 
 	if r1 != r2 {
 		t.Error("Expected same FileReader instance for shared read, got different instances")

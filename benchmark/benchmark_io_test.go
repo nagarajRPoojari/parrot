@@ -2,18 +2,20 @@ package storage
 
 import (
 	"context"
-	"io"
-	"log"
 	"os"
 	"runtime/pprof"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
+
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
+
+const MILLION = 10_00_000
 
 // BenchmarkMemtable_Intensive_Read benchmarks intensive concurrent reads
 // after flushing a large number of entries to disk-backed memtables.
@@ -23,10 +25,10 @@ import (
 //   - cache & manifest sync() are enabled
 //   - limits concurrent read threads to 5000 to prevent lock starvation
 func BenchmarkMemtable_Intensive_Read(t *testing.B) {
-	log.SetOutput(io.Discard)
+	log.Disable()
 
 	const MEMTABLE_THRESHOLD = 1024 * 2
-	const MAX_CONCURRENT_READ_ROUTINES = 5000
+	const MAX_CONCURRENT_READ_ROUTINES = 500
 
 	temp := t.TempDir()
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})
@@ -78,7 +80,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 	t.Logf("total ops = %d", totalOps)
 	elapsed := time.Since(start)
 	opsPerSec := float64(totalOps) / elapsed.Seconds()
-	t.Logf("Total time taken: %v, Ops/sec: %.2f", elapsed, opsPerSec)
+	t.Logf("Total time taken: %v, Ops/sec: %.2fM", elapsed, opsPerSec/MILLION)
 
 	dumpGoroutines()
 }
@@ -89,7 +91,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 //   - WAL is disabled
 //   - cache & manifest sync() are enabled
 func BenchmarkMemtable_Intensive_Write(t *testing.B) {
-	log.SetOutput(io.Discard)
+	log.Disable()
 
 	const MEMTABLE_THRESHOLD = 1024 * 2
 	temp := t.TempDir()
@@ -117,7 +119,7 @@ func BenchmarkMemtable_Intensive_Write(t *testing.B) {
 	t.Logf("total ops = %d", totalOps)
 	elapsed := time.Since(start)
 	opsPerSec := float64(totalOps) / elapsed.Seconds()
-	t.Logf("Total time taken: %v, Ops/sec: %.2f", elapsed, opsPerSec)
+	t.Logf("Total time taken: %v, Ops/sec: %.2fM", elapsed, opsPerSec/MILLION)
 
 	dumpGoroutines()
 }

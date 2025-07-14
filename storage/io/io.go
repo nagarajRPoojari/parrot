@@ -1,10 +1,12 @@
 package io
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 
 	"github.com/edsrzf/mmap-go"
 )
@@ -42,7 +44,7 @@ func (t *FileWriter) Close() {
 func (t *FileWriter) Write(data []byte) {
 	_, err := t.file.Write(data)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed to write data, error=%v", err)
 	}
 
 	// Sync call to flush data to disk
@@ -71,29 +73,29 @@ func GetFileManager() *FileManager {
 	return singleInstance
 }
 
-func (t *FileManager) openForSharedRead(path string) *FileReader {
+func (t *FileManager) openForSharedRead(path string) (*FileReader, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to open file %s, error=%v", path, err)
 	}
 
 	info, err := f.Stat()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to get stats of file %s, error=%v", path, err)
 	}
 
 	// empty files can't be opened through mmap
 	if info.Size() == 0 || info.IsDir() {
-		log.Fatalf("Invalid file for mmap: size=%d, isDir=%v", info.Size(), info.IsDir())
+		return nil, fmt.Errorf("invalid file for mmap: size=%d, isDir=%v", info.Size(), info.IsDir())
 	}
 
 	mmapData, err := mmap.Map(f, mmap.RDONLY, 0)
 	if err != nil {
-		log.Fatalf("unable to open mmap error=%v", err)
+		return nil, fmt.Errorf("unable to open mmap, error=%v", err)
 	}
 
 	fileReader := &FileReader{payload: mmapData, file: f}
-	return fileReader
+	return fileReader, nil
 }
 
 func (t *FileManager) getOrCreateLock(path string) *sync.Mutex {
@@ -122,18 +124,21 @@ func (t *FileManager) getOrCreateLock(path string) *sync.Mutex {
 //
 //   - if write is using mmap with RDWR mode or without mmap, might update same
 //     page cache, leading to torn or corrupt data
-func (t *FileManager) OpenForRead(path string) *FileReader {
+func (t *FileManager) OpenForRead(path string) (*FileReader, error) {
 	lock := t.getOrCreateLock(path)
 	lock.Lock()
 	defer lock.Unlock()
 
 	if reader, ok := t.sharedFileReadersMap[path]; ok {
-		return reader
+		return reader, nil
 	}
-	reader := t.openForSharedRead(path)
+	reader, err := t.openForSharedRead(path)
+	if err != nil {
+		return nil, err
+	}
 	t.sharedFileReadersMap[path] = reader
 
-	return reader
+	return reader, nil
 }
 
 // OpenForWrite requires Close call to flush data to disk properly.
@@ -151,4 +156,11 @@ func (t *FileManager) OpenForWrite(path string) *FileWriter {
 	}
 
 	return &FileWriter{file: f}
+}
+
+func (t *FileManager) Delete(path string) error {
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("failed to delete %s", path)
+	}
+	return nil
 }
