@@ -1,8 +1,6 @@
 package compactor
 
 import (
-	"fmt"
-
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
@@ -21,7 +19,6 @@ func (h *MergerHeap[K, V]) Len() int {
 }
 
 func (h *MergerHeap[K, V]) Less(i, j int) bool {
-	fmt.Printf("Less() = %v\n", h.h[j].pl)
 	return h.h[i].pl.Key.Less(h.h[j].pl.Key)
 }
 

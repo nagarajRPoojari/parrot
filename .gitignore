@@ -4,3 +4,4 @@ prof
 *.db
 *.test
 *.out
+*.json

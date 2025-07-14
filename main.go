@@ -57,8 +57,8 @@ func Run() {
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: os.TempDir()})
 	mf.Load()
 
-	ctx, _ := context.WithCancel(context.Background())
-	// b.Cleanup(cancel)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	go mf.Sync(ctx)
 
@@ -88,7 +88,7 @@ func Run() {
 		go func(i int) {
 			defer wg.Done()
 			val, ok := mts.Read(types.IntKey{K: i})
-			v := types.IntValue{int32(i)}
+			v := types.IntValue{V: int32(i)}
 			if !ok || val != v {
 				fmt.Printf("Expected %v, got %v", v, val)
 			}

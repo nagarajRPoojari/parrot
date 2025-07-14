@@ -57,7 +57,7 @@ func TestGC(t *testing.T) {
 		t.Errorf("Expected %v, got %v", v, val)
 	}
 
-	// gc should have added new sst-0.db at level-1
+	// gc should have added new sst-0.db at level-3
 	if _, err := os.Stat(fmt.Sprintf("%s/test/level-1/sst-0.db", tempDir)); err != nil {
 		t.Errorf("Expected file %s/test/level-1/sst-0.db to exist, got error: %v", tempDir, err)
 	}
@@ -68,5 +68,70 @@ func TestGC(t *testing.T) {
 	}
 	if l1.TablesCount() != 1 {
 		t.Errorf("Expected to have sst-0 under level-1, got tablesCount: %d", l1.TablesCount())
+	}
+}
+
+func TestGC_Intensive(t *testing.T) {
+	// log.Disable()
+	tempDir := "."
+
+	const MEMTABLE_THRESHOLD = 1024
+
+	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: tempDir})
+	mf.Load()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go mf.Sync(ctx)
+
+	mts := memtable.NewMemtableStore[types.IntKey, types.IntValue](mf, memtable.MemtableOpts{MemtableSoftLimit: MEMTABLE_THRESHOLD})
+	d := types.IntValue{V: 0}
+
+	gc := NewGC(
+		mf,
+		(*cache.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
+		&SizeTiredCompaction[types.IntKey, types.IntValue]{
+			Opts: SizeTiredCompactionOpts{
+				Levle0MaxSizeInBytes:       2 * MEMTABLE_THRESHOLD, // softlimit = 2kb
+				MaxSizeInBytesGrowthFactor: 2,                      // growth_factor = 2
+			},
+		},
+	)
+	go gc.Run(ctx)
+
+	// overflow memtable to trigger flush
+	multiples := 10
+	totalOps := int(MEMTABLE_THRESHOLD/d.SizeOf()) * multiples
+
+	for i := range totalOps {
+		mts.Write(types.IntKey{K: i}, types.IntValue{V: int32(i)})
+	}
+	k, v := types.IntKey{K: 90892389}, types.IntValue{V: 1993920}
+	if ok := mts.Write(k, v); !ok {
+		t.Errorf("Expected to trigger flush")
+	}
+
+	// wait for memtable to flush & clear both memtable
+	time.Sleep(3 * time.Second)
+	mts.Clear()
+
+	val, ok := mts.Read(types.IntKey{K: 244})
+	v = types.IntValue{V: 244}
+
+	if !ok || val != v {
+		t.Errorf("Expected %v, got %v", v, val)
+	}
+
+	// gc should have added new sst-0.db at level-3
+	if _, err := os.Stat(fmt.Sprintf("%s/test/level-3/sst-0.db", tempDir)); err != nil {
+		t.Errorf("Expected file %s/test/level-3/sst-0.db to exist, got error: %v", tempDir, err)
+	}
+
+	l3, err := mf.GetLSM().GetLevel(3)
+	if err != nil {
+		t.Errorf("Expected to have sst-0 under level-3, got error: %v", err)
+	}
+	if l3.TablesCount() != 1 {
+		t.Errorf("Expected to have sst-0 under level-3, got tablesCount: %d", l3.TablesCount())
 	}
 }

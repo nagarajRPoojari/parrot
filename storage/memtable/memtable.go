@@ -136,14 +136,14 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 	log.Infof("Started reading from memtables")
 
 	node := t.q.tail
-	c := 0
 	for node != nil {
 		if v, ok := node.mem.Read(key); ok {
 			return v, true
 		}
 		node = node.Prev
-		c++
 	}
+
+	log.Infof("Started reading from sst")
 
 	// Search backward at all sst
 	level, _ := t.mf.GetLSM().GetLevel(0)
@@ -160,8 +160,8 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 			}
 
 		}
-		level, _ = t.mf.GetLSM().GetLevel(1)
 		cnt++
+		level, _ = t.mf.GetLSM().GetLevel(cnt)
 	}
 	var empty V
 	return empty, false
