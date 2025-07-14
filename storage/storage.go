@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 
+	"github.com/nagarajRPoojari/lsm/storage/cache"
+	"github.com/nagarajRPoojari/lsm/storage/compactor"
 	"github.com/nagarajRPoojari/lsm/storage/errors"
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
@@ -17,11 +19,13 @@ type StorageOpts struct {
 	Directory        string
 
 	MemtableThreshold int
+	TurnOnCompaction  bool
 }
 
 type Storage[K types.Key, V types.Value] struct {
-	name  string
-	store *memtable.MemtableStore[K, V]
+	name     string
+	store    *memtable.MemtableStore[K, V]
+	manifest *metadata.Manifest
 
 	reader *Reader[K, V]
 	writer *Writer[K, V]
@@ -29,7 +33,7 @@ type Storage[K types.Key, V types.Value] struct {
 	opts StorageOpts
 }
 
-func NewStorage[K types.Key, V types.Value](name string, opts StorageOpts) *Storage[K, V] {
+func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, opts StorageOpts) *Storage[K, V] {
 	v := &Storage[K, V]{name: name}
 	v.createOrLoadCollection(opts.MemtableThreshold)
 	v.reader = NewReader(v.store, ReaderOpts{
@@ -42,6 +46,17 @@ func NewStorage[K types.Key, V types.Value](name string, opts StorageOpts) *Stor
 	})
 
 	v.opts = opts
+
+	if opts.TurnOnCompaction {
+
+		gc := compactor.NewGC(
+			v.manifest,
+			(*cache.CacheManager[types.IntKey, types.IntValue])(v.store.DecoderCache),
+			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1000, MaxSizeInBytesGrowthFactor: 10}},
+		)
+		go gc.Run(ctx)
+	}
+
 	return v
 }
 
@@ -54,6 +69,7 @@ func (t *Storage[K, V]) createOrLoadCollection(memtableSoftLimit int) {
 
 	mt := memtable.NewMemtableStore[K, V](mf, memtable.MemtableOpts{MemtableSoftLimit: int64(memtableSoftLimit)})
 	t.store = mt
+	t.manifest = mf
 }
 
 func (t *Storage[K, V]) Get(key K) ReadStatus[V] {
@@ -65,8 +81,8 @@ func (t *Storage[K, V]) Put(key K, value V) WriteStatus {
 }
 
 type ReadStatus[V types.Value] struct {
-	value V
-	err   error
+	Value V
+	Err   error
 }
 
 type ReadRequest[K types.Key, V types.Value] struct {
@@ -111,9 +127,9 @@ func (t *Reader[K, V]) rworker() {
 	for req := range t.q {
 		val, ok := t.store.Read(req.key)
 		if !ok {
-			req.result <- ReadStatus[V]{err: errors.KeyNotFoundError}
+			req.result <- ReadStatus[V]{Err: errors.KeyNotFoundError}
 		}
-		req.result <- ReadStatus[V]{value: val}
+		req.result <- ReadStatus[V]{Value: val}
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nagarajRPoojari/lsm/storage"
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
@@ -27,51 +28,49 @@ const MILLION = 10_00_000
 func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 	log.Disable()
 
+	dbName := "test"
+
 	const MEMTABLE_THRESHOLD = 1024 * 2
-	const MAX_CONCURRENT_READ_ROUTINES = 500
-
-	temp := t.TempDir()
-	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})
-	mf.Load()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	go mf.Sync(ctx)
+	db := storage.NewStorage[types.IntKey, types.IntValue](
+		dbName,
+		ctx,
+		storage.StorageOpts{
+			WriteQueueSize:    1000,
+			ReadWorkersCount:  500,
+			ReadQueueSize:     1000,
+			Directory:         ".",
+			MemtableThreshold: MEMTABLE_THRESHOLD,
+		})
 
-	// overflow first memtable to trigger flush
-	mts := memtable.NewMemtableStore[types.IntKey, types.IntValue](mf, memtable.MemtableOpts{MemtableSoftLimit: MEMTABLE_THRESHOLD})
 	d := types.IntValue{V: 0}
 
 	multiples := 50
 	totalOps := int(MEMTABLE_THRESHOLD/d.SizeOf()) * multiples
 
 	for i := range totalOps {
-		mts.Write(types.IntKey{K: i}, types.IntValue{V: int32(i)})
+		db.Put(types.IntKey{K: i}, types.IntValue{V: int32(i)})
 	}
 
-	// A small gap to let it flush to disk & erase
-	// further read should come from disk sst
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 	wg := sync.WaitGroup{}
 
 	start := time.Now()
 
-	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
-
-	for i := range totalOps {
+	for i := 0; i < totalOps; i++ {
 		wg.Add(1)
 
-		ticket <- struct{}{} // acquire a ticket
 		go func(i int) {
 			defer func() {
-				<-ticket // release the ticket
 				wg.Done()
 			}()
-			val, ok := mts.Read(types.IntKey{K: i})
+
+			readStatus := db.Get(types.IntKey{K: i})
 			v := types.IntValue{V: int32(i)}
-			if !ok || val != v {
-				t.Errorf("Expected %v, got %v", v, val)
+			if readStatus.Err != nil || readStatus.Value != v {
+				t.Errorf("Expected %v, got %v", v, readStatus)
 			}
 		}(i)
 	}
@@ -79,6 +78,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 	wg.Wait()
 	t.Logf("total ops = %d", totalOps)
 	elapsed := time.Since(start)
+
 	opsPerSec := float64(totalOps) / elapsed.Seconds()
 	t.Logf("Total time taken: %v, Ops/sec: %.2fM", elapsed, opsPerSec/MILLION)
 

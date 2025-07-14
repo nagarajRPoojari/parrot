@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"testing"
 
 	"github.com/nagarajRPoojari/lsm/storage/types"
@@ -8,21 +9,37 @@ import (
 )
 
 func TestStorage_Load(t *testing.T) {
+	log.Disable()
+
 	dbName := "test"
 
-	st := NewStorage[types.IntKey, types.IntValue](dbName,
+	const MEMTABLE_THRESHOLD = 1024 * 2
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	db := NewStorage[types.IntKey, types.IntValue](
+		dbName,
+		ctx,
 		StorageOpts{
-			WriteQueueSize:    100,
-			ReadWorkersCount:  100,
-			ReadQueueSize:     100,
+			WriteQueueSize:    1000,
+			ReadWorkersCount:  500,
+			ReadQueueSize:     1000,
 			Directory:         ".",
-			MemtableThreshold: 1024,
+			MemtableThreshold: MEMTABLE_THRESHOLD,
 		})
 
-	k := types.IntKey{K: 100}
-	r := st.Put(k, types.IntValue{V: 189})
-	log.Infof("put value: %v", r)
-	v := st.Get(k)
+	k, v := types.IntKey{K: 278}, types.IntValue{V: int32(267)}
+	writeRes := db.Put(k, v)
 
-	log.Infof("get value: %v", v)
+	if writeRes.err != nil {
+		t.Errorf("Failed to put key, error=%v", writeRes.err)
+	}
+
+	readRes := db.Get(k)
+
+	if readRes.Err != nil || readRes.Value != v {
+		t.Errorf("Failed to get key, error=%v", writeRes.err)
+	}
+
 }

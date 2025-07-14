@@ -170,8 +170,8 @@ func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 
 	for i := 0; i < totalOps; i++ {
 		wg.Add(1)
+		ticket <- struct{}{} // acquire a ticket
 		go func(i int) {
-			ticket <- struct{}{} // acquire a ticket
 			defer func() {
 				<-ticket // release the ticket
 				wg.Done()
