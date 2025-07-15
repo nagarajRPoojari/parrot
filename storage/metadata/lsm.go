@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"fmt"
+	"maps"
 	"sync"
 )
 
@@ -99,9 +100,7 @@ func (lv LevelView) Clone() *Level {
 func (lvl Level) Clone() *Level {
 	newLevel := NewLevel()
 	newLevel.tables = make(map[int]*SSTable, len(lvl.tables))
-	for k, v := range lvl.tables {
-		newLevel.tables[k] = v
-	}
+	maps.Copy(newLevel.tables, lvl.tables)
 	return newLevel
 }
 

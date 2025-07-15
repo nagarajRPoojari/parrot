@@ -158,6 +158,23 @@ func (t *FileManager) OpenForWrite(path string) *FileWriter {
 	return &FileWriter{file: f}
 }
 
+// OpenForAppend requires Close call to flush data to disk properly.
+// Suitable for single write/dump
+func (t *FileManager) OpenForAppend(path string) *FileWriter {
+	dir := filepath.Dir(path)
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Fatalf("failed to create directory %v: %v", dir, err)
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatalf("failed to open file for writing %v", err)
+	}
+
+	return &FileWriter{file: f}
+}
+
 func (t *FileManager) Delete(path string) error {
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("failed to delete %s", path)

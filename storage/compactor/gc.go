@@ -151,15 +151,18 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		wt.GetFile().Sync()
 		log.Infof("LSM address - %p %p %p\n", mf.GetLSM(), levelL, nextLevel)
 
-		// @todo: getPath & appendSSTable should be atomic
-		// for now no two go routines can appendSSTable on same level
+		// @todo: getPath & SetSSTable should be atomic
+		// for now no two go routines can SetSSTable on same level
 		// - only gc can append table for level > 0
-		// - only flushed can append table for lebel = 0
+		// - only flusher can append table for lebel = 0
 		nextLevel.SetSSTable(l1TablesNextId, metadata.NewSSTable(path, int64(totalSizeInBytes)))
 
 		// @todo: by that time writer could have added new sst (specifically in case of level=0)
 		levelL.Clear(l0TablesIds)
 
+		// - Concurrent read routines may still be accessing these L0 files.
+		// - Fortunately, the OS will not actually remove the files from disk
+		//   until all file descriptors referencing them are closed.
 		for _, path := range l0TablePaths {
 			if err := manager.Delete(path); err != nil {
 				log.Panicf("failed to delete %s, got error=%v", path, err)
