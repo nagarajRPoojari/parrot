@@ -52,7 +52,7 @@ func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, op
 		gc := compactor.NewGC(
 			v.manifest,
 			(*cache.CacheManager[types.IntKey, types.IntValue])(v.store.DecoderCache),
-			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1000, MaxSizeInBytesGrowthFactor: 10}},
+			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1024 * 2, MaxSizeInBytesGrowthFactor: 2}},
 		)
 		go gc.Run(ctx)
 	}

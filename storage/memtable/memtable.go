@@ -1,6 +1,7 @@
 package memtable
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
@@ -39,6 +40,9 @@ func (t *Memtable[K, V]) BuildPayloadList() ([]types.Payload[K, V], int64) {
 		pl = append(pl, types.Payload[K, V]{Key: k, Val: v})
 		size += int64(v.SizeOf())
 	}
+	sort.Slice(pl, func(i, j int) bool {
+		return pl[i].Key.Less(pl[j].Key)
+	})
 	return pl, size
 }
 
@@ -148,9 +152,9 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 	// Search backward at all sst
 	level, _ := t.mf.GetLSM().GetLevel(0)
 	cnt := 0
+
 	for level != nil {
 		for _, table := range level.GetTables() {
-
 			l, _ := t.DecoderCache.Get(table.Path)
 			// @todo: use min/max lookup to avoid full table search
 			for _, k := range l {

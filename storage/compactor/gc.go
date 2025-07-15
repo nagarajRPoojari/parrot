@@ -71,20 +71,32 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		log.Infof("Compaction started on level ", l)
 
 		tablesCount := levelL.TablesCount()
-
+		l0TablesIds := []int{}
+		l0TablePaths := []string{}
 		// Load all sst from level=l
 		sstList := make([][]types.Payload[K, V], tablesCount)
 		// total size of level=l ( sum of all sst size )
 		totalSizeInBytes := 0
 		keyCount := 0
-		for i, table := range levelL.GetTables() {
+
+		index := 0
+		for id, table := range levelL.GetTables() {
 			sst, err := cache.Get(table.Path)
 			if err != nil {
 				log.Panicf("failed to read sst while running gc")
 			}
-			sstList[i] = sst
+			sstList[index] = sst
 			totalSizeInBytes += int(table.SizeInBytes)
 			keyCount += len(sst)
+
+			if index == tablesCount {
+				break
+			}
+
+			index++
+
+			l0TablesIds = append(l0TablesIds, id)
+			l0TablePaths = append(l0TablePaths, table.Path)
 		}
 
 		// K-way merge using next-pointer min heap
@@ -104,7 +116,7 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 
 			// push the next pointed payload by current popped paylod
 			if j < len(sstList[i])-1 {
-				heap.Push(h, Pair[K, V]{pl: &sstList[i][j], I: i, J: j + 1})
+				heap.Push(h, Pair[K, V]{pl: &sstList[i][j+1], I: i, J: j + 1})
 			}
 			keyCount--
 		}
@@ -124,7 +136,8 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		}
 
 		manager := io.GetFileManager()
-		path := mf.FormatPath(l+1, nextLevel.TablesCount())
+		l1TablesNextId := nextLevel.GetNextId()
+		path := mf.FormatPath(l+1, l1TablesNextId)
 
 		wt := manager.OpenForWrite(path)
 		defer wt.Close()
@@ -134,23 +147,23 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 			log.Fatalf("error=%v\n", err)
 		}
 
+		// Ensure all buffered data is flushed to disk through fsync system call
+		wt.GetFile().Sync()
 		log.Infof("LSM address - %p %p %p\n", mf.GetLSM(), levelL, nextLevel)
 
 		// @todo: getPath & appendSSTable should be atomic
 		// for now no two go routines can appendSSTable on same level
 		// - only gc can append table for level > 0
 		// - only flushed can append table for lebel = 0
-		path = mf.FormatPath(l+1, nextLevel.TablesCount())
-		nextLevel.AppendSSTable(metadata.NewSSTable(path, int64(totalSizeInBytes)))
+		nextLevel.SetSSTable(l1TablesNextId, metadata.NewSSTable(path, int64(totalSizeInBytes)))
 
 		// @todo: by that time writer could have added new sst (specifically in case of level=0)
-		old := levelL.Clear(tablesCount)
+		levelL.Clear(l0TablesIds)
 
-		for i, table := range old[:tablesCount] {
-			if err := manager.Delete(table.Path); err != nil {
-				log.Panicf("failed to delete %s, got error=%v", table.Path, err)
+		for _, path := range l0TablePaths {
+			if err := manager.Delete(path); err != nil {
+				log.Panicf("failed to delete %s, got error=%v", path, err)
 			}
-			old[i] = nil
 		}
 
 		// adding new table to next level can lead to overflow

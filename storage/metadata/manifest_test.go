@@ -117,7 +117,8 @@ func TestManifest_Sync(t *testing.T) {
 
 	for range 10 {
 		level, _ := m.lsm0.GetLevel(0)
-		level.AppendSSTable(NewSSTable("dummy", 0))
+		nextId := level.GetNextId()
+		level.SetSSTable(nextId, NewSSTable("dummy", 0))
 	}
 
 	time.Sleep(4 * time.Second)

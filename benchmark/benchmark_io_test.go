@@ -31,6 +31,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 	dbName := "test"
 
 	const MEMTABLE_THRESHOLD = 1024 * 2
+	const MAX_CONCURRENT_READ_ROUTINES = 500
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -43,6 +44,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 			ReadQueueSize:     1000,
 			Directory:         ".",
 			MemtableThreshold: MEMTABLE_THRESHOLD,
+			TurnOnCompaction:  true,
 		})
 
 	d := types.IntValue{V: 0}
@@ -54,16 +56,18 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 		db.Put(types.IntKey{K: i}, types.IntValue{V: int32(i)})
 	}
 
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 	wg := sync.WaitGroup{}
 
 	start := time.Now()
-
+	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
 	for i := 0; i < totalOps; i++ {
 		wg.Add(1)
 
+		ticket <- struct{}{} // acquire ticket
 		go func(i int) {
 			defer func() {
+				<-ticket // release ticket
 				wg.Done()
 			}()
 

@@ -19,6 +19,8 @@ race_test:
 	go test $(SRC) --race -v
 
 clean:
+	rm -rf ./benchmark/test
+	rm -rf ./benchmark/manifest
 	rm -rf $(BIN_DIR)
 	rm ./benchmark.test
 	rm mem.out

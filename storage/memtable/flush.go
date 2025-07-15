@@ -38,7 +38,8 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 
 	manager := io.GetFileManager()
 	l0, _ := t.mf.GetLSM().GetLevel(0)
-	path := t.mf.FormatPath(0, l0.TablesCount())
+	nextId := l0.GetNextId()
+	path := t.mf.FormatPath(0, nextId)
 
 	wt := manager.OpenForWrite(path)
 	defer wt.Close()
@@ -54,7 +55,7 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 
 	// update manifest, should acquire write lock over level-0
 	lvl, _ := t.mf.GetLSM().GetLevel(0)
-	lvl.AppendSSTable(metadata.NewSSTable(path, totalSizeInBytes))
+	lvl.SetSSTable(nextId, metadata.NewSSTable(path, totalSizeInBytes))
 
 	mem.mu.Lock()
 	defer mem.mu.Unlock()

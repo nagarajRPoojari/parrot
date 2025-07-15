@@ -86,16 +86,22 @@ func (lv LevelView) Clone() *Level {
 		tbl := SSTable(v)
 		tables = append(tables, &tbl)
 	}
-	return &Level{
-		mu:     &sync.RWMutex{},
-		tables: tables,
+	tableMap := make(map[int]*SSTable, len(tables))
+	for i, tbl := range tables {
+		tableMap[i] = tbl
 	}
+	newLevel := NewLevel()
+	newLevel.tables = tableMap
+
+	return newLevel
 }
 
 func (lvl Level) Clone() *Level {
 	newLevel := NewLevel()
-	newLevel.tables = make([]*SSTable, len(lvl.tables))
-	copy(newLevel.tables, lvl.tables)
+	newLevel.tables = make(map[int]*SSTable, len(lvl.tables))
+	for k, v := range lvl.tables {
+		newLevel.tables[k] = v
+	}
 	return newLevel
 }
 
@@ -120,7 +126,7 @@ func (lvl *Level) ToView() LevelView {
 	defer lvl.mu.RUnlock()
 
 	view := NewLevelView()
-	view.Tables = make([]SSTableView, len(lvl.GetTables()))
+	view.Tables = make(map[int]SSTableView, len(lvl.GetTables()))
 	for i, tb := range lvl.GetTables() {
 		st := SSTableView(*tb)
 		view.Tables[i] = st

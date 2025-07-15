@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Level struct {
-	tables []*SSTable
+	tables map[int]*SSTable
 
 	SizeInBytes atomic.Int64
 
@@ -18,20 +19,18 @@ type Level struct {
 }
 
 func NewLevel() *Level {
-	return &Level{tables: []*SSTable{}, mu: &sync.RWMutex{}, SizeInBytes: atomic.Int64{}}
+	return &Level{tables: map[int]*SSTable{}, mu: &sync.RWMutex{}, SizeInBytes: atomic.Int64{}}
 }
 
-func (t *Level) AppendSSTable(table *SSTable) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.SizeInBytes.Add(table.SizeInBytes)
-	t.tables = append(t.tables, table)
+func (t *Level) GetNextId() int {
+	return int(time.Now().UnixNano())
 }
 
 func (t *Level) SetSSTable(i int, table *SSTable) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.tables[i] = table
+	t.SizeInBytes.Add(table.SizeInBytes)
 }
 
 func (t *Level) TablesCount() int {
@@ -40,7 +39,7 @@ func (t *Level) TablesCount() int {
 	return len(t.tables)
 }
 
-func (t *Level) GetTables() []*SSTable {
+func (t *Level) GetTables() map[int]*SSTable {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.tables
@@ -59,15 +58,15 @@ func (t *Level) GetTable(i int) (*SSTable, error) {
 // this wont release memory since reference to tables
 // need to be returned
 // !caution: clear mannualy for old
-func (t *Level) Clear(till int) []*SSTable {
+func (t *Level) Clear(ids []int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	old := t.tables[:till]
-	t.tables = []*SSTable{}
-	t.SizeInBytes.Store(0)
+	for _, i := range ids {
+		t.SizeInBytes.Add(-t.tables[i].SizeInBytes)
+		delete(t.tables, i)
+	}
 
-	return old
 }
 
 // Level snapshot
@@ -76,9 +75,9 @@ func (t *Level) Clear(till int) []*SSTable {
 // Warning!: it is not advised to modify snapshot views
 
 type LevelView struct {
-	Tables []SSTableView `json:"tables"`
+	Tables map[int]SSTableView `json:"tables"`
 }
 
 func NewLevelView() LevelView {
-	return LevelView{Tables: []SSTableView{}}
+	return LevelView{Tables: map[int]SSTableView{}}
 }
