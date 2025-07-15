@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -60,7 +61,7 @@ func TestManifest_GetLevel(t *testing.T) {
 }
 
 func TestManifest_Load(t *testing.T) {
-
+	log.Disable()
 	tmpDir := t.TempDir()
 
 	const testName = "test-db"
@@ -95,12 +96,11 @@ func TestManifest_Load(t *testing.T) {
 	assert.NotNil(t, m2.lsm0)
 	assert.Equal(t, m2.lsm0, lsmData)
 
-	// for cleanup
 	time.Sleep(100 * time.Millisecond)
 }
 
 func TestManifest_Sync(t *testing.T) {
-
+	log.Disable()
 	tmpDir := t.TempDir()
 
 	const testName = "test-db"

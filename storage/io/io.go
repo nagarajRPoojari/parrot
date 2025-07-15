@@ -175,6 +175,11 @@ func (t *FileManager) OpenForAppend(path string) *FileWriter {
 	return &FileWriter{file: f}
 }
 
+func (t *FileManager) Exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func (t *FileManager) Delete(path string) error {
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("failed to delete %s", path)

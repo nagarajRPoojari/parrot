@@ -11,6 +11,12 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
+type Event struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+	Op    string `json:"op"`
+}
+
 type MemtableOpts struct {
 	MemtableSoftLimit int64 // bytes
 	QueueHardLimit    int

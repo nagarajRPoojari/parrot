@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
+	"github.com/nagarajRPoojari/lsm/storage/wal"
 
 	"github.com/nagarajRPoojari/lsm/storage/cache"
 	"github.com/nagarajRPoojari/lsm/storage/io"
@@ -14,14 +15,66 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/utils"
 )
 
+type Operation string
+
+const (
+	DeleteStarted   Operation = "DELETE_START"
+	DeleteCompleted Operation = "DELETE_COMPLETE"
+	WriteStarted    Operation = "WRITE_START"
+	WriteCompleted  Operation = "WRITE_COMPLETE"
+)
+
+const (
+	LOG_FILE = "./test.log"
+)
+
+type Event struct {
+	Path string
+	Op   Operation
+}
+
 type GC[K types.Key, V types.Value] struct {
 	mf       *metadata.Manifest
 	cache    *cache.CacheManager[K, V]
 	strategy CompactionStrategy[K, V]
+	wal      *wal.WAL[Event]
 }
 
 func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.CacheManager[K, V], strategy CompactionStrategy[K, V]) *GC[K, V] {
-	return &GC[K, V]{mf, cache, strategy}
+	events, err := wal.Replay[Event](LOG_FILE)
+	if err == nil {
+		rollback(events)
+	}
+
+	wal, _ := wal.NewWAL[Event](LOG_FILE)
+	gc := &GC[K, V]{mf, cache, strategy, wal}
+
+	return gc
+}
+
+func rollback(events []Event) {
+	partialDeletes := map[string]struct{}{}
+	partialWrites := map[string]struct{}{}
+	for _, event := range events {
+		switch event.Op {
+		case DeleteCompleted:
+			delete(partialDeletes, event.Path)
+		case WriteCompleted:
+			delete(partialWrites, event.Path)
+		case DeleteStarted:
+			partialDeletes[event.Path] = struct{}{}
+		case WriteStarted:
+			partialWrites[event.Path] = struct{}{}
+		}
+	}
+
+	fm := io.GetFileManager()
+	for path := range partialDeletes {
+		fm.Delete(path)
+	}
+	for path := range partialWrites {
+		fm.Delete(path)
+	}
 }
 
 func (t *GC[K, V]) Run(ctx context.Context) {
@@ -35,7 +88,7 @@ func (t *GC[K, V]) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			// gc should run synchronously
-			t.strategy.Run(t.mf, t.cache, 0)
+			t.strategy.Run(t.mf, t.cache, t.wal, 0)
 		}
 	}
 }
@@ -44,7 +97,7 @@ type CompactionStrategyOpts interface {
 }
 
 type CompactionStrategy[K types.Key, V types.Value] interface {
-	Run(*metadata.Manifest, *cache.CacheManager[K, V], int)
+	Run(*metadata.Manifest, *cache.CacheManager[K, V], *wal.WAL[Event], int)
 }
 
 type SizeTiredCompactionOpts struct {
@@ -58,7 +111,7 @@ type SizeTiredCompaction[K types.Key, V types.Value] struct {
 	Opts SizeTiredCompactionOpts
 }
 
-func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.CacheManager[K, V], l int) {
+func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.CacheManager[K, V], wal *wal.WAL[Event], l int) {
 	levelL, err := mf.GetLSM().GetLevel(l)
 	if err != nil {
 		return
@@ -142,10 +195,12 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		wt := manager.OpenForWrite(path)
 		defer wt.Close()
 
+		wal.Append(Event{Path: path, Op: WriteStarted})
 		err = utils.Encode(wt.GetFile(), merged)
 		if err != nil {
 			log.Fatalf("error=%v\n", err)
 		}
+		wal.Append(Event{Path: path, Op: WriteCompleted})
 
 		// Ensure all buffered data is flushed to disk through fsync system call
 		wt.GetFile().Sync()
@@ -164,13 +219,15 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		// - Fortunately, the OS will not actually remove the files from disk
 		//   until all file descriptors referencing them are closed.
 		for _, path := range l0TablePaths {
+			wal.Append(Event{Path: path, Op: DeleteStarted})
 			if err := manager.Delete(path); err != nil {
 				log.Panicf("failed to delete %s, got error=%v", path, err)
 			}
+			wal.Append(Event{Path: path, Op: DeleteCompleted})
 		}
 
 		// adding new table to next level can lead to overflow
-		t.Run(mf, cache, l+1)
+		t.Run(mf, cache, wal, l+1)
 
 	} else {
 		return

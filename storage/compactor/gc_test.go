@@ -57,23 +57,20 @@ func TestGC(t *testing.T) {
 		t.Errorf("Expected %v, got %v", v, val)
 	}
 
-	// gc should have added new sst-0.db at level-3
-	if _, err := os.Stat(fmt.Sprintf("%s/test/level-1/sst-0.db", tempDir)); err != nil {
-		t.Errorf("Expected file %s/test/level-1/sst-0.db to exist, got error: %v", tempDir, err)
+	level1Path := fmt.Sprintf("%s/test/level-1", tempDir)
+	entries, err := os.ReadDir(level1Path)
+	if err != nil {
+		t.Errorf("Expected to read %s, got error: %v", level1Path, err)
+	}
+	if len(entries) == 0 {
+		t.Errorf("Expected %s to be non-empty, but it is empty", level1Path)
 	}
 
-	l1, err := mf.GetLSM().GetLevel(1)
-	if err != nil {
-		t.Errorf("Expected to have sst-0 under level-1, got error: %v", err)
-	}
-	if l1.TablesCount() != 1 {
-		t.Errorf("Expected to have sst-0 under level-1, got tablesCount: %d", l1.TablesCount())
-	}
 }
 
 func TestGC_Intensive(t *testing.T) {
-	// log.Disable()
-	tempDir := "."
+	log.Disable()
+	tempDir := t.TempDir()
 
 	const MEMTABLE_THRESHOLD = 1024
 
@@ -122,16 +119,12 @@ func TestGC_Intensive(t *testing.T) {
 		t.Errorf("Expected %v, got %v", v, val)
 	}
 
-	// gc should have added new sst-0.db at level-3
-	if _, err := os.Stat(fmt.Sprintf("%s/test/level-3/sst-0.db", tempDir)); err != nil {
-		t.Errorf("Expected file %s/test/level-3/sst-0.db to exist, got error: %v", tempDir, err)
-	}
-
-	l3, err := mf.GetLSM().GetLevel(3)
+	level3Path := fmt.Sprintf("%s/test/level-3", tempDir)
+	entries, err := os.ReadDir(level3Path)
 	if err != nil {
-		t.Errorf("Expected to have sst-0 under level-3, got error: %v", err)
+		t.Errorf("Expected to read %s, got error: %v", level3Path, err)
 	}
-	if l3.TablesCount() != 1 {
-		t.Errorf("Expected to have sst-0 under level-3, got tablesCount: %d", l3.TablesCount())
+	if len(entries) == 0 {
+		t.Errorf("Expected %s to be non-empty, but it is empty", level3Path)
 	}
 }

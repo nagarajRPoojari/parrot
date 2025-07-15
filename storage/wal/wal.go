@@ -1,41 +1,71 @@
 package wal
 
 import (
-	"bufio"
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
+	"errors"
+	"io"
+
+	"github.com/nagarajRPoojari/lsm/storage/utils/log"
+
 	"os"
 	"sync"
-	"time"
 
-	"github.com/nagarajRPoojari/lsm/storage/io"
+	customerr "github.com/nagarajRPoojari/lsm/storage/errors"
+	fio "github.com/nagarajRPoojari/lsm/storage/io"
 )
 
-type Event struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-	Op    string `json:"op"`
+type Event interface {
 }
 
-type WAL struct {
-	mu     sync.Mutex
-	file   *os.File
-	writer *bufio.Writer
+type WAL[E Event] struct {
+	mu      sync.Mutex
+	file    *os.File
+	encoder *gob.Encoder
 
-	eventCh chan Event
+	eventCh chan E
 	closeCh chan struct{}
 	wg      sync.WaitGroup
 }
 
-func NewWAL(path string) (*WAL, error) {
+func Replay[E Event](path string) ([]E, error) {
+	fm := fio.GetFileManager()
+	if !fm.Exists(path) {
+		return nil, customerr.FileNotFoundError
+	}
+	fr, err := fm.OpenForRead(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fr.Close()
 
-	fm := io.GetFileManager()
+	var events []E
+	decoder := gob.NewDecoder(bytes.NewReader(fr.GetPayload()))
+
+	for {
+		var entry E
+		err := decoder.Decode(&entry)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			log.Errorf("failed to decode, err=%v", err)
+		}
+		events = append(events, entry)
+	}
+	return events, nil
+}
+
+func NewWAL[E Event](path string) (*WAL[E], error) {
+
+	fm := fio.GetFileManager()
 	fw := fm.OpenForAppend(path)
 
-	w := &WAL{
+	w := &WAL[E]{
 		file:    fw.GetFile(),
-		writer:  bufio.NewWriter(fw.GetFile()),
-		eventCh: make(chan Event, 1024),
+		eventCh: make(chan E, 1024),
 		closeCh: make(chan struct{}),
+		encoder: gob.NewEncoder(fw.GetFile()),
 	}
 
 	w.wg.Add(1)
@@ -44,14 +74,11 @@ func NewWAL(path string) (*WAL, error) {
 	return w, nil
 }
 
-func (w *WAL) Append(entry Event) {
+func (w *WAL[E]) Append(entry E) {
 	w.eventCh <- entry
 }
 
-func (t *WAL) run() {
-	ticker := time.NewTicker(1000 * time.Millisecond)
-	defer ticker.Stop()
-
+func (t *WAL[E]) run() {
 	for {
 		select {
 		case event := <-t.eventCh:
@@ -59,47 +86,35 @@ func (t *WAL) run() {
 		case <-t.closeCh:
 			t.drain()
 			return
-		case <-ticker.C:
-			t.flush()
 		}
 	}
 }
 
-// write writes a single entry to the WAL.
-func (t *WAL) write(entry Event) {
+// write writes a single entry to the WAL[E].
+func (t *WAL[E]) write(entry Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	data, err := json.Marshal(entry)
-	if err == nil {
-		t.writer.Write(data)
-		t.writer.WriteByte('\n')
+	if err := t.encoder.Encode(entry); err != nil {
+		log.Fatalf("failed to encode log event %v", err)
 	}
+
 }
 
-func (t *WAL) flush() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.writer.Flush()
-	t.file.Sync()
-}
-
-func (t *WAL) drain() {
+func (t *WAL[E]) drain() {
 	for {
 		select {
 		case event := <-t.eventCh:
 			t.write(event)
 		default:
-			t.flush()
 			t.file.Close()
 			return
 		}
 	}
 }
 
-// Close gracefully shuts down the WAL.
-func (t *WAL) Close() {
+// Close gracefully shuts down the WAL[E].
+func (t *WAL[E]) Close() {
 	close(t.closeCh)
 	t.wg.Wait()
 }

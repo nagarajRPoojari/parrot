@@ -3,6 +3,7 @@ package errors
 import "fmt"
 
 const KeyNotFoundError = IO("Key not found")
+const FileNotFoundError = IO("File not found")
 
 type IO string
 

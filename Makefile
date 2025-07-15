@@ -21,6 +21,7 @@ race_test:
 clean:
 	rm -rf ./benchmark/test
 	rm -rf ./benchmark/manifest
+	rm -rf ./benchmark/*.log
 	rm -rf $(BIN_DIR)
 	rm ./benchmark.test
 	rm mem.out
