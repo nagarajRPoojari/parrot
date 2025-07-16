@@ -1,6 +1,11 @@
 
 # parrot
 
+
+> [!NOTE]  
+> parrot is an LSM based storage engine inspired by pebble, roseDB, levelsDB and many more
+
+
 ## Initial Setup
 
 This section is intended to help developers and contributors get a working copy of
@@ -142,7 +147,6 @@ OR
 make run q="--version"
 ```
 <br>
-
 
 
 <br>
