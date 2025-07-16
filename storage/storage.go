@@ -85,6 +85,7 @@ type ReadStatus[V types.Value] struct {
 	Err   error
 }
 
+// @deprecated
 type ReadRequest[K types.Key, V types.Value] struct {
 	key    K
 	result chan ReadStatus[V]
@@ -110,19 +111,22 @@ func NewReader[K types.Key, V types.Value](store *memtable.MemtableStore[K, V], 
 
 	r.opts = opts
 
-	for range r.opts.WorkersCount {
-		go r.rworker()
-	}
+	// for range r.opts.WorkersCount {
+	// 	go r.rworker()
+	// }
 
 	return r
 }
 
 func (t *Reader[K, V]) Get(key K) ReadStatus[V] {
-	req := ReadRequest[K, V]{key: key, result: make(chan ReadStatus[V])}
-	t.q <- req
-	return <-req.result
+	val, ok := t.store.Read(key)
+	if !ok {
+		return ReadStatus[V]{Err: errors.KeyNotFoundError}
+	}
+	return ReadStatus[V]{Value: val}
 }
 
+// @deprecated
 func (t *Reader[K, V]) rworker() {
 	for req := range t.q {
 		val, ok := t.store.Read(req.key)
@@ -144,6 +148,7 @@ type WriterOpts struct {
 	RequestQueueSize int
 }
 
+// @deprecated
 type WriteRequest[K types.Key, V types.Value] struct {
 	key    K
 	value  V
@@ -164,19 +169,19 @@ func NewWriter[K types.Key, V types.Value](store *memtable.MemtableStore[K, V], 
 	}
 	r.opts = opts
 
-	for range r.opts.WorkersCount {
-		go r.wworker()
-	}
+	// for range r.opts.WorkersCount {
+	// 	go r.wworker()
+	// }
 
 	return r
 }
 
 func (t *Writer[K, V]) Put(key K, value V) WriteStatus {
-	req := WriteRequest[K, V]{key: key, value: value, status: make(chan WriteStatus)}
-	t.q <- req
-	return <-req.status
+	_ = t.store.Write(key, value)
+	return WriteStatus{err: nil}
 }
 
+// @deprecated
 func (t *Writer[K, V]) wworker() {
 	log.Infof("write worker running")
 	for req := range t.q {

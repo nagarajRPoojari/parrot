@@ -30,7 +30,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 
 	dbName := "test"
 
-	const MEMTABLE_THRESHOLD = 1024 * 2
+	const MEMTABLE_THRESHOLD = 1024 * 2 * 1024
 	const MAX_CONCURRENT_READ_ROUTINES = 500
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -49,7 +49,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 
 	d := types.IntValue{V: 0}
 
-	multiples := 50
+	multiples := 10
 	totalOps := int(MEMTABLE_THRESHOLD/d.SizeOf()) * multiples
 
 	for i := range totalOps {

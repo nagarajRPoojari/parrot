@@ -1,0 +1,22 @@
+Running write benchmark...
+go test -bench=BenchmarkMemtable_Intensive_Write -memprofile=mem.out ./benchmark
+goos: darwin
+goarch: arm64
+pkg: github.com/nagarajRPoojari/lsm/benchmark
+cpu: Apple M3 Pro
+BenchmarkMemtable_Intensive_Write-12    	1000000000	         0.008358 ns/op
+--- BENCH: BenchmarkMemtable_Intensive_Write-12
+    benchmark_io_test.go:128: total ops = 512
+    benchmark_io_test.go:131: Total time taken: 91.375µs, Ops/sec: 5.60M
+    benchmark_io_test.go:128: total ops = 512
+    benchmark_io_test.go:131: Total time taken: 66.667µs, Ops/sec: 7.68M
+    benchmark_io_test.go:128: total ops = 512
+    benchmark_io_test.go:131: Total time taken: 40.375µs, Ops/sec: 12.68M
+    benchmark_io_test.go:128: total ops = 512
+    benchmark_io_test.go:131: Total time taken: 50.584µs, Ops/sec: 10.12M
+    benchmark_io_test.go:128: total ops = 512
+    benchmark_io_test.go:131: Total time taken: 56.292µs, Ops/sec: 9.10M
+	... [output truncated]
+PASS
+ok  	github.com/nagarajRPoojari/lsm/benchmark	0.943s
+make: Nothing to be done for `write'.
