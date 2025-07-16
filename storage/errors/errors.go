@@ -4,6 +4,7 @@ import "fmt"
 
 const KeyNotFoundError = IO("Key not found")
 const FileNotFoundError = IO("File not found")
+const WALDisabledError = IO("WAL disabled")
 
 type IO string
 

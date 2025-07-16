@@ -64,5 +64,11 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 		delete(mem.data, k)
 	}
 
+	// delete current memetable log file
+
+	if mem.opts.TurnOnWal {
+		mem.wal.Delete()
+	}
+
 	log.Infof("deleted memtable at %s", path)
 }

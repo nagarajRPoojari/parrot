@@ -3,6 +3,8 @@ package compactor
 import (
 	"container/heap"
 	"context"
+	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
@@ -24,10 +26,6 @@ const (
 	WriteCompleted  Operation = "WRITE_COMPLETE"
 )
 
-const (
-	LOG_FILE = "./test.log"
-)
-
 type Event struct {
 	Path string
 	Op   Operation
@@ -40,14 +38,17 @@ type GC[K types.Key, V types.Value] struct {
 	wal      *wal.WAL[Event]
 }
 
-func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.CacheManager[K, V], strategy CompactionStrategy[K, V]) *GC[K, V] {
-	events, err := wal.Replay[Event](LOG_FILE)
+func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.CacheManager[K, V], strategy CompactionStrategy[K, V], logDir string) *GC[K, V] {
+	logPath := filepath.Join(logDir, "gc-wal.log")
+	wl, _ := wal.NewWAL[Event](logPath)
+
+	fmt.Println("replaying from NEWGC")
+	events, err := wal.Replay[Event](logPath)
 	if err == nil {
 		rollback(events)
 	}
 
-	wal, _ := wal.NewWAL[Event](LOG_FILE)
-	gc := &GC[K, V]{mf, cache, strategy, wal}
+	gc := &GC[K, V]{mf, cache, strategy, wl}
 
 	return gc
 }

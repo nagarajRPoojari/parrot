@@ -9,17 +9,23 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/types"
-	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 )
 
 type StorageOpts struct {
-	ReadWorkersCount int
-	ReadQueueSize    int
-	WriteQueueSize   int
-	Directory        string
+	Directory string
 
+	// memtable opts
 	MemtableThreshold int
-	TurnOnCompaction  bool
+	QueueHardLimit    int
+	QueueSoftLimit    int
+
+	// compaction opts
+	TurnOnCompaction bool
+	GCLogDir         string
+
+	// wal opts
+	TurnOnWal bool
+	WalLogDir string
 }
 
 type Storage[K types.Key, V types.Value] struct {
@@ -34,18 +40,10 @@ type Storage[K types.Key, V types.Value] struct {
 }
 
 func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, opts StorageOpts) *Storage[K, V] {
-	v := &Storage[K, V]{name: name}
-	v.createOrLoadCollection(opts.MemtableThreshold)
-	v.reader = NewReader(v.store, ReaderOpts{
-		RequestQueueSize: opts.ReadQueueSize,
-		WorkersCount:     opts.ReadWorkersCount,
-	})
-	v.writer = NewWriter(v.store, WriterOpts{
-		RequestQueueSize: opts.WriteQueueSize,
-		WorkersCount:     1,
-	})
-
-	v.opts = opts
+	v := &Storage[K, V]{name: name, opts: opts}
+	v.createOrLoadCollection()
+	v.reader = NewReader(v.store, ReaderOpts{})
+	v.writer = NewWriter(v.store, WriterOpts{})
 
 	if opts.TurnOnCompaction {
 
@@ -53,6 +51,7 @@ func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, op
 			v.manifest,
 			(*cache.CacheManager[types.IntKey, types.IntValue])(v.store.DecoderCache),
 			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1024 * 2, MaxSizeInBytesGrowthFactor: 2}},
+			opts.GCLogDir,
 		)
 		go gc.Run(ctx)
 	}
@@ -60,14 +59,20 @@ func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, op
 	return v
 }
 
-func (t *Storage[K, V]) createOrLoadCollection(memtableSoftLimit int) {
+func (t *Storage[K, V]) createOrLoadCollection() {
 	mf := metadata.NewManifest(t.name, metadata.ManifestOpts{Dir: t.opts.Directory})
 	mf.Load()
 
 	ctx, _ := context.WithCancel(context.Background())
 	go mf.Sync(ctx)
 
-	mt := memtable.NewMemtableStore[K, V](mf, memtable.MemtableOpts{MemtableSoftLimit: int64(memtableSoftLimit)})
+	mt := memtable.NewMemtableStore[K, V](mf,
+		memtable.MemtableOpts{
+			MemtableSoftLimit: int64(t.opts.MemtableThreshold),
+			QueueHardLimit:    t.opts.QueueHardLimit,
+			QueueSoftLimit:    t.opts.QueueSoftLimit,
+			LogDir:            t.opts.WalLogDir,
+		})
 	t.store = mt
 	t.manifest = mf
 }
@@ -85,19 +90,10 @@ type ReadStatus[V types.Value] struct {
 	Err   error
 }
 
-// @deprecated
-type ReadRequest[K types.Key, V types.Value] struct {
-	key    K
-	result chan ReadStatus[V]
-}
-
 type ReaderOpts struct {
-	WorkersCount     int
-	RequestQueueSize int
 }
 
 type Reader[K types.Key, V types.Value] struct {
-	q     chan ReadRequest[K, V]
 	store *memtable.MemtableStore[K, V]
 
 	opts ReaderOpts
@@ -106,14 +102,10 @@ type Reader[K types.Key, V types.Value] struct {
 func NewReader[K types.Key, V types.Value](store *memtable.MemtableStore[K, V], opts ReaderOpts) *Reader[K, V] {
 	r := &Reader[K, V]{
 		store: store,
-		q:     make(chan ReadRequest[K, V], opts.RequestQueueSize),
+		opts:  opts,
 	}
 
 	r.opts = opts
-
-	// for range r.opts.WorkersCount {
-	// 	go r.rworker()
-	// }
 
 	return r
 }
@@ -126,37 +118,14 @@ func (t *Reader[K, V]) Get(key K) ReadStatus[V] {
 	return ReadStatus[V]{Value: val}
 }
 
-// @deprecated
-func (t *Reader[K, V]) rworker() {
-	for req := range t.q {
-		val, ok := t.store.Read(req.key)
-		if !ok {
-			req.result <- ReadStatus[V]{Err: errors.KeyNotFoundError}
-		}
-		req.result <- ReadStatus[V]{Value: val}
-	}
-}
-
-/////////
-
 type WriteStatus struct {
 	err error
 }
 
 type WriterOpts struct {
-	WorkersCount     int
-	RequestQueueSize int
-}
-
-// @deprecated
-type WriteRequest[K types.Key, V types.Value] struct {
-	key    K
-	value  V
-	status chan WriteStatus
 }
 
 type Writer[K types.Key, V types.Value] struct {
-	q     chan WriteRequest[K, V]
 	store *memtable.MemtableStore[K, V]
 
 	opts WriterOpts
@@ -165,13 +134,9 @@ type Writer[K types.Key, V types.Value] struct {
 func NewWriter[K types.Key, V types.Value](store *memtable.MemtableStore[K, V], opts WriterOpts) *Writer[K, V] {
 	r := &Writer[K, V]{
 		store: store,
-		q:     make(chan WriteRequest[K, V], opts.RequestQueueSize),
+		opts:  opts,
 	}
 	r.opts = opts
-
-	// for range r.opts.WorkersCount {
-	// 	go r.wworker()
-	// }
 
 	return r
 }
@@ -179,14 +144,4 @@ func NewWriter[K types.Key, V types.Value](store *memtable.MemtableStore[K, V], 
 func (t *Writer[K, V]) Put(key K, value V) WriteStatus {
 	_ = t.store.Write(key, value)
 	return WriteStatus{err: nil}
-}
-
-// @deprecated
-func (t *Writer[K, V]) wworker() {
-	log.Infof("write worker running")
-	for req := range t.q {
-		log.Infof("write worker got a write request")
-		_ = t.store.Write(req.key, req.value)
-		req.status <- WriteStatus{err: nil}
-	}
 }
