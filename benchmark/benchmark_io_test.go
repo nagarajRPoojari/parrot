@@ -18,14 +18,14 @@ import (
 
 const MILLION = 10_00_000
 
-// BenchmarkMemtable_Intensive_Read benchmarks intensive concurrent reads
+// BenchmarkMemtable_Read benchmarks concurrent reads
 // after flushing a large number of entries to disk-backed memtables.
 //
 //   - sst/memtable size is set to 2kb
 //   - WAL is disabled
 //   - cache & manifest sync() are enabled
 //   - limits concurrent read threads to 5000 to prevent lock starvation
-func BenchmarkMemtable_Intensive_Read(t *testing.B) {
+func BenchmarkMemtable_Read(t *testing.B) {
 	log.Disable()
 
 	dbName := "test"
@@ -44,6 +44,7 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 			Directory:         tempDir,
 			MemtableThreshold: MEMTABLE_THRESHOLD,
 			TurnOnCompaction:  true,
+			TurnOnWal:         true,
 			GCLogDir:          tempDir,
 		})
 
@@ -89,12 +90,13 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 	dumpGoroutines()
 }
 
-// BenchmarkMemtable_Intensive_Write benchmarks intensive serial writes
+// BenchmarkMemtable_Write_With_WAL benchmarks serial writes
+// with WAL turned on
 //
-//   - sst/memtable size is set to 2kb
-//   - WAL is disabled
+//   - sst/memtable size is set to 2MB
+//   - WAL is enabled
 //   - cache & manifest sync() are enabled
-func BenchmarkMemtable_Intensive_Write(t *testing.B) {
+func BenchmarkMemtable_Write_With_WAL(t *testing.B) {
 	log.Disable()
 
 	const MEMTABLE_THRESHOLD = 1024 * 2 * 1024
@@ -112,7 +114,53 @@ func BenchmarkMemtable_Intensive_Write(t *testing.B) {
 		memtable.MemtableOpts{
 			MemtableSoftLimit: MEMTABLE_THRESHOLD,
 			LogDir:            temp,
-			TurnOnWal:         false,
+			TurnOnWal:         true,
+		})
+	d := types.IntValue{V: 0}
+
+	multiples := 10
+	totalOps := int(MEMTABLE_THRESHOLD/d.SizeOf()) * multiples
+
+	start := time.Now()
+
+	for i := range totalOps {
+		mts.Write(types.IntKey{K: i}, types.IntValue{V: int32(i)})
+	}
+
+	t.Logf("total ops = %d", totalOps)
+	elapsed := time.Since(start)
+	opsPerSec := float64(totalOps) / elapsed.Seconds()
+	t.Logf("Total time taken: %v, Ops/sec: %.2fM", elapsed, opsPerSec/MILLION)
+
+	// cleanDirectory(temp)
+	dumpGoroutines()
+}
+
+// BenchmarkMemtable_Write_Without_WAL benchmarks serial writes
+// with WAL turned off
+//
+//   - sst/memtable size is set to 2MB
+//   - WAL is disabled
+//   - cache & manifest sync() are enabled
+func BenchmarkMemtable_Write_Without_WAL(t *testing.B) {
+	log.Disable()
+
+	const MEMTABLE_THRESHOLD = 1024 * 2 * 1024
+	temp := "test"
+	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})
+	mf.Load()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	go mf.Sync(ctx)
+
+	// overflow first memtable to trigger flush
+	mts := memtable.NewMemtableStore[types.IntKey, types.IntValue](mf,
+		memtable.MemtableOpts{
+			MemtableSoftLimit: MEMTABLE_THRESHOLD,
+			LogDir:            temp,
+			TurnOnWal:         true,
 		})
 	d := types.IntValue{V: 0}
 
@@ -141,19 +189,4 @@ func dumpGoroutines() {
 	}
 	defer f.Close()
 	pprof.Lookup("goroutine").WriteTo(f, 1)
-}
-
-func cleanDirectory(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		path := dir + string(os.PathSeparator) + entry.Name()
-		err := os.RemoveAll(path)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }

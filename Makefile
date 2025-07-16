@@ -26,23 +26,35 @@ clean:
 	rm ./benchmark.test
 	rm mem.out
 
-.PHONY: benchmark benchmark_read benchmark_write
 
 benchmark:
 ifeq ($(filter read,$(MAKECMDGOALS)),read)
 	@echo "Running read benchmark..."
-	go test -bench=BenchmarkMemtable_Intensive_Read -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
+	go test -bench=BenchmarkMemtable_Read -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
+
 else ifeq ($(filter write,$(MAKECMDGOALS)),write)
 	@echo "Running write benchmark..."
-	go test -bench=BenchmarkMemtable_Intensive_Write -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
+
+ifeq ($(WAL),on)
+	@echo "→ WAL enabled: running only WAL benchmark"
+	go test -bench=BenchmarkMemtable_Write_With_WAL -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
+
+else ifeq ($(WAL),off)
+	@echo "→ WAL disabled: running only non-WAL benchmark"
+	go test -bench=BenchmarkMemtable_Write_Without_WAL -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
+
 else
-	@echo "Usage: make benchmark read | write"
+	@echo "→ No WAL option provided: running both benchmarks"
+	go test -bench=BenchmarkMemtable_Write_With_WAL -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
+	go test -bench=BenchmarkMemtable_Write_Without_WAL -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
 endif
 
-read:
-write:
+else
+	@echo "Usage: make benchmark read | write [WAL=on|off]"
+endif
 
-.PHONY: mem_prof go_prof
+.PHONY: benchmark read write
+
 
 mem_prof:
 	go tool pprof ./benchmark.test mem.out  
