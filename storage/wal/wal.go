@@ -20,21 +20,30 @@ import (
 type Event interface {
 }
 
+// WAL implements a Write-Ahead Log to ensure durability of events.
+// It serializes events to disk before they are applied, allowing recovery after crashes.
 type WAL[E Event] struct {
-	mu         sync.Mutex
-	path       string
-	fileWriter *fio.FileWriter
-	encoder    *gob.Encoder
 
+	// Path to the WAL file on disk
+	path string
+
+	// Channel for queuing events to be written asynchronously
+	eventCh chan E
+
+	// Channel used to signal WAL shutdown
+	closeCh chan struct{}
+
+	// WaitGroup to wait for all background goroutines to finish during shutdown
+	wg sync.WaitGroup
+
+	fileWriter     *fio.FileWriter
+	encoder        *gob.Encoder
 	bufferedWriter *bufio.Writer
 
-	eventCh chan E
-	closeCh chan struct{}
-	wg      sync.WaitGroup
-
-	once sync.Once
+	mu sync.Mutex
 }
 
+// NewWAL returns new WAL instance
 func NewWAL[E Event](path string) (*WAL[E], error) {
 
 	fm := fio.GetFileManager()
@@ -47,7 +56,6 @@ func NewWAL[E Event](path string) (*WAL[E], error) {
 		eventCh:        make(chan E, 1024),
 		closeCh:        make(chan struct{}),
 		encoder:        gob.NewEncoder(bw),
-		once:           sync.Once{},
 		bufferedWriter: bw,
 	}
 
@@ -57,6 +65,7 @@ func NewWAL[E Event](path string) (*WAL[E], error) {
 	return w, nil
 }
 
+// Replay loads logs from give path & rebuilds event list
 func Replay[E Event](path string) ([]E, error) {
 	fm := fio.GetFileManager()
 	if !fm.Exists(path) {

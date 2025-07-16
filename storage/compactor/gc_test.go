@@ -15,6 +15,13 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
+// TestGC verifies basic garbage collection and compaction behavior.
+// It:
+//   - Sets up a memtable store and a size-tiered compaction GC instance
+//   - Writes enough data to exceed the memtable size and trigger a flush
+//   - Runs GC in the background to compact flushed SSTables
+//   - Confirms data integrity after flushing and compaction
+//   - Checks that compaction output exists in level-1 directory
 func TestGC(t *testing.T) {
 	log.Disable()
 	tempDir := t.TempDir()
@@ -32,7 +39,7 @@ func TestGC(t *testing.T) {
 	gc := NewGC(
 		mf,
 		(*cache.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
-		&SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1000, MaxSizeInBytesGrowthFactor: 10}},
+		&SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: SizeTiredCompactionOpts{Level0MaxSizeInBytes: 1000, MaxSizeInBytesGrowthFactor: 10}},
 		tempDir,
 	)
 	go gc.Run(ctx)
@@ -69,6 +76,13 @@ func TestGC(t *testing.T) {
 
 }
 
+// TestGC_Intensive verifies end-to-end garbage collection and compaction behavior.
+// It performs the following:
+//   - Initializes a memtable store and a size-tiered compaction GC instance
+//   - Writes enough data to trigger multiple memtable flushes
+//   - Runs background GC to compact flushed SSTables
+//   - Asserts that data is preserved after flushing and compaction
+//   - Confirms compaction output by checking higher-level SSTable directory
 func TestGC_Intensive(t *testing.T) {
 	log.Disable()
 	tempDir := t.TempDir()
@@ -90,7 +104,7 @@ func TestGC_Intensive(t *testing.T) {
 		(*cache.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
 		&SizeTiredCompaction[types.IntKey, types.IntValue]{
 			Opts: SizeTiredCompactionOpts{
-				Levle0MaxSizeInBytes:       2 * MEMTABLE_THRESHOLD, // softlimit = 2kb
+				Level0MaxSizeInBytes:       2 * MEMTABLE_THRESHOLD, // softlimit = 2kb
 				MaxSizeInBytesGrowthFactor: 2,                      // growth_factor = 2
 			},
 		},

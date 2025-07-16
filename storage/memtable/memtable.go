@@ -29,13 +29,20 @@ type MemTableEvent[K types.Key, V types.Value] struct {
 }
 
 type MemtableOpts struct {
-	MemtableSoftLimit int64 // bytes
-	QueueHardLimit    int
-	QueueSoftLimit    int
+	// Maximum in-memory size of a memtable before it's marked for flushing (in bytes)
+	MemtableSoftLimit int64
 
-	// path where write-ahead-logs will be stored
+	// Maximum number of memtables allowed in the flush queue before producers are blocked
+	QueueHardLimit int
+
+	// Threshold for starting to flush memtables proactively to avoid hitting the hard limit
+	QueueSoftLimit int
+
+	// Enables write-ahead logging for durability
 	TurnOnWal bool
-	LogDir    string
+
+	// Directory path where WAL files will be stored
+	LogDir string
 }
 
 type Memtable[K types.Key, V types.Value] struct {
@@ -47,15 +54,22 @@ type Memtable[K types.Key, V types.Value] struct {
 	wal  *wal.WAL[MemTableEvent[K, V]]
 }
 
+// NewMemtable initializes a new Memtable instance.
+// If WAL is enabled via options, it also creates a new WAL file for durability.
 func NewMemtable[K types.Key, V types.Value](opts MemtableOpts) *Memtable[K, V] {
 	var wl *wal.WAL[MemTableEvent[K, V]]
+
 	if opts.TurnOnWal {
-		wl, _ = wal.NewWAL[MemTableEvent[K, V]](
-			filepath.Join(opts.LogDir, fmt.Sprintf("wal-%d.log", time.Now().UnixNano())),
-		)
+		logPath := filepath.Join(opts.LogDir, fmt.Sprintf("wal-%d.log", time.Now().UnixNano()))
+		wl, _ = wal.NewWAL[MemTableEvent[K, V]](logPath)
 	}
-	mem := &Memtable[K, V]{data: map[K]V{}, mu: &sync.RWMutex{}, wal: wl, opts: opts}
-	return mem
+
+	return &Memtable[K, V]{
+		data: map[K]V{},
+		mu:   &sync.RWMutex{},
+		opts: opts,
+		wal:  wl,
+	}
 }
 
 func (t *Memtable[K, V]) GetWall() *wal.WAL[MemTableEvent[K, V]] {
@@ -79,7 +93,6 @@ func (t *Memtable[K, V]) BuildPayloadList() ([]types.Payload[K, V], int64) {
 }
 
 func (t *Memtable[K, V]) Write(key K, value V) bool {
-	// check soft threshold
 	t.mu.Lock()
 	defer func() {
 		t.mu.Unlock()
@@ -89,6 +102,7 @@ func (t *Memtable[K, V]) Write(key K, value V) bool {
 		}
 	}()
 
+	// check soft threshold
 	if uintptr(len(t.data)+1)*value.SizeOf() > uintptr(t.opts.MemtableSoftLimit) {
 		return false
 	}
@@ -105,18 +119,23 @@ func (t *Memtable[K, V]) Read(key K) (V, bool) {
 
 type MemtableStore[K types.Key, V types.Value] struct {
 	mf *metadata.Manifest
-	q  *Queue[K, V]
 
-	// keep track of current non-disposable memtable & it's corresponding node
+	// Flush queue that holds memtable nodes waiting to be flushed
+	q *Queue[K, V]
+
+	// The current active memtable used for writes (not yet ready for flush)
 	mem *Memtable[K, V]
 
-	// keep track of memNode to modify disposablity
+	// The queue node corresponding to the current active memtable
+	// Used to update disposability (wraps MemtableStore.mem)
 	memNode *Node[K, V]
 
 	flusher *Flusher[K, V]
-	opts    MemtableOpts
 
+	// Cache for decoded values to speed up reads
 	DecoderCache *cache.CacheManager[K, V]
+
+	opts MemtableOpts
 }
 
 func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts MemtableOpts) *MemtableStore[K, V] {
@@ -158,9 +177,9 @@ func (t *MemtableStore[K, V]) RollbackAll() error {
 		return err
 	}
 
-	// Sort files by the integer in the filename (wal-{int}.log)
+	// sort logs to run writes in order
 	sort.Slice(files, func(j, i int) bool {
-		// Extract the integer part from the filename
+		// extract the integer part from the filename
 		getNum := func(path string) int64 {
 			base := filepath.Base(path)
 			var num int64
@@ -199,7 +218,8 @@ func (t *MemtableStore[K, V]) Clear() {
 	t.q.Push(t.memNode)
 }
 
-// return value is true if flush is triggered
+// Write puts key[K], value[V]
+// return value will be true if it triggers flush
 func (t *MemtableStore[K, V]) Write(key K, value V) bool {
 	if ok := t.mem.Write(key, value); !ok {
 		log.Infof("Memtable overflow")
@@ -226,6 +246,7 @@ func (t *MemtableStore[K, V]) Write(key K, value V) bool {
 	return false
 }
 
+// Read reads value for key[K] from memtable followed by ssts
 func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 	// Search backwards in Queue
 

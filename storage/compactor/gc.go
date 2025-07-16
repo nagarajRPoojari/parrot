@@ -3,7 +3,6 @@ package compactor
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	"path/filepath"
 	"time"
 
@@ -31,18 +30,25 @@ type Event struct {
 	Op   Operation
 }
 
+// GC handles garbage collection and compaction for the storage engine.
+// It reclaims space by merging or removing obsolete SSTables and log entries.
 type GC[K types.Key, V types.Value] struct {
-	mf       *metadata.Manifest
-	cache    *cache.CacheManager[K, V]
+	mf *metadata.Manifest
+
+	// Cache for decoded key-value pairs to accelerate reads during compaction
+	cache *cache.CacheManager[K, V]
+
+	// Compaction strategy: e.g Level, Size
 	strategy CompactionStrategy[K, V]
-	wal      *wal.WAL[Event]
+
+	// Write-Ahead Log used to persist compaction-related events
+	wal *wal.WAL[Event]
 }
 
 func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.CacheManager[K, V], strategy CompactionStrategy[K, V], logDir string) *GC[K, V] {
 	logPath := filepath.Join(logDir, "gc-wal.log")
 	wl, _ := wal.NewWAL[Event](logPath)
 
-	fmt.Println("replaying from NEWGC")
 	events, err := wal.Replay[Event](logPath)
 	if err == nil {
 		rollback(events)
@@ -53,6 +59,7 @@ func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.Cache
 	return gc
 }
 
+// #WIP: rollback supports partial recovery from broken compaction process.
 func rollback(events []Event) {
 	partialDeletes := map[string]struct{}{}
 	partialWrites := map[string]struct{}{}
@@ -102,13 +109,18 @@ type CompactionStrategy[K types.Key, V types.Value] interface {
 }
 
 type SizeTiredCompactionOpts struct {
-	// softlimit on level=0
-	Levle0MaxSizeInBytes int64
-	// level-x-softlimit = level-0-softlimit * max(x * growth-factor, 1)
+	// Soft size limit for level 0 (in bytes)
+	Level0MaxSizeInBytes int64
+
+	// Growth factor used to compute soft size limits for higher levels.
+	// For level x: maxSize = Level0MaxSizeInBytes * max(x * growthFactor, 1)
 	MaxSizeInBytesGrowthFactor int32
 }
 
+// SizeTiredCompaction implements a size-tiered compaction strategy.
+// It selects SSTables for compaction based on their sizes, grouping similar-sized files.
 type SizeTiredCompaction[K types.Key, V types.Value] struct {
+	// Configuration options for size-tiered compaction
 	Opts SizeTiredCompactionOpts
 }
 
@@ -118,22 +130,27 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		return
 	}
 
-	// path := mf.GetLevelPath(l)
 	size := levelL.SizeInBytes.Load()
-	if int64(size) > t.Opts.Levle0MaxSizeInBytes*max(int64(l)*int64(t.Opts.MaxSizeInBytesGrowthFactor), 1) {
-		log.Infof("Size(level=%d)=%d, growth_factor=%d, l0MaxSize=%d", l, size, t.Opts.MaxSizeInBytesGrowthFactor, t.Opts.Levle0MaxSizeInBytes)
+	// check level-l overflow according to size tired compaction strategy
+	if int64(size) > t.Opts.Level0MaxSizeInBytes*max(int64(l)*int64(t.Opts.MaxSizeInBytesGrowthFactor), 1) {
+		log.Infof("Size(level=%d)=%d, growth_factor=%d, l0MaxSize=%d", l, size, t.Opts.MaxSizeInBytesGrowthFactor, t.Opts.MaxSizeInBytesGrowthFactor)
 		log.Infof("Compaction started on level ", l)
 
 		tablesCount := levelL.TablesCount()
+
+		// keeping track of all read ssts id & file, (for deletion)
 		l0TablesIds := []int{}
 		l0TablePaths := []string{}
-		// Load all sst from level=l
+
 		sstList := make([][]types.Payload[K, V], tablesCount)
+
 		// total size of level=l ( sum of all sst size )
 		totalSizeInBytes := 0
-		keyCount := 0
 
+		keyCount := 0
 		index := 0
+
+		// Load all sst from level=l
 		for id, table := range levelL.GetTables() {
 			sst, err := cache.Get(table.Path)
 			if err != nil {
@@ -213,7 +230,7 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		// - only flusher can append table for lebel = 0
 		nextLevel.SetSSTable(l1TablesNextId, metadata.NewSSTable(path, int64(totalSizeInBytes)))
 
-		// @todo: by that time writer could have added new sst (specifically in case of level=0)
+		// clearing only read tables
 		levelL.Clear(l0TablesIds)
 
 		// - Concurrent read routines may still be accessing these L0 files.
