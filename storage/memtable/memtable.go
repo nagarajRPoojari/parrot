@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nagarajRPoojari/lsm/storage/errors"
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 	"github.com/nagarajRPoojari/lsm/storage/wal"
 
@@ -33,7 +34,8 @@ type MemtableOpts struct {
 	QueueSoftLimit    int
 
 	// path where write-ahead-logs will be stored
-	LogDir string
+	TurnOnWal bool
+	LogDir    string
 }
 
 type Memtable[K types.Key, V types.Value] struct {
@@ -46,10 +48,13 @@ type Memtable[K types.Key, V types.Value] struct {
 }
 
 func NewMemtable[K types.Key, V types.Value](opts MemtableOpts) *Memtable[K, V] {
-	wal, _ := wal.NewWAL[MemTableEvent[K, V]](
-		filepath.Join(opts.LogDir, fmt.Sprintf("wal-%d.log", time.Now().UnixNano())),
-	)
-	mem := &Memtable[K, V]{data: map[K]V{}, mu: &sync.RWMutex{}, wal: wal, opts: opts}
+	var wl *wal.WAL[MemTableEvent[K, V]]
+	if opts.TurnOnWal {
+		wl, _ = wal.NewWAL[MemTableEvent[K, V]](
+			filepath.Join(opts.LogDir, fmt.Sprintf("wal-%d.log", time.Now().UnixNano())),
+		)
+	}
+	mem := &Memtable[K, V]{data: map[K]V{}, mu: &sync.RWMutex{}, wal: wl, opts: opts}
 	return mem
 }
 
@@ -79,7 +84,9 @@ func (t *Memtable[K, V]) Write(key K, value V) bool {
 	defer func() {
 		t.mu.Unlock()
 		// log the write event to wal
-		t.wal.Append(MemTableEvent[K, V]{Key: key, Value: value, Op: WriteOperation})
+		if t.opts.TurnOnWal {
+			t.wal.Append(MemTableEvent[K, V]{Key: key, Value: value, Op: WriteOperation})
+		}
 	}()
 
 	if uintptr(len(t.data)+1)*value.SizeOf() > uintptr(t.opts.MemtableSoftLimit) {
@@ -139,12 +146,16 @@ func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts Me
 	return memStore
 }
 
-func (t *MemtableStore[K, V]) RollbackAll() {
+func (t *MemtableStore[K, V]) RollbackAll() error {
+	if !t.opts.TurnOnWal {
+		return errors.WALDisabledError
+	}
+
 	// List all WAL log files in the LogDir
 	files, err := filepath.Glob(filepath.Join(t.opts.LogDir, "*.log"))
 	if err != nil {
 		log.Infof("error listing WAL files: %v", err)
-		return
+		return err
 	}
 
 	// Sort files by the integer in the filename (wal-{int}.log)
@@ -162,6 +173,8 @@ func (t *MemtableStore[K, V]) RollbackAll() {
 	for _, file := range files {
 		t.rollback(file)
 	}
+
+	return nil
 }
 
 func (t *MemtableStore[K, V]) rollback(file string) {

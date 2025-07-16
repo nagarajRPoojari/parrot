@@ -22,11 +22,10 @@ func TestStorage_Load(t *testing.T) {
 		dbName,
 		ctx,
 		StorageOpts{
-			WriteQueueSize:    1000,
-			ReadWorkersCount:  500,
-			ReadQueueSize:     1000,
-			Directory:         ".",
+			Directory:         t.TempDir(),
 			MemtableThreshold: MEMTABLE_THRESHOLD,
+			TurnOnCompaction:  false,
+			TurnOnWal:         false,
 		})
 
 	k, v := types.IntKey{K: 278}, types.IntValue{V: int32(267)}

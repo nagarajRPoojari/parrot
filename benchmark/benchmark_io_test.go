@@ -30,7 +30,9 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 
 	dbName := "test"
 
-	const MEMTABLE_THRESHOLD = 1024 * 2 * 1024
+	tempDir := "."
+
+	const MEMTABLE_THRESHOLD = 1024 * 2
 	const MAX_CONCURRENT_READ_ROUTINES = 500
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -39,13 +41,10 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 		dbName,
 		ctx,
 		storage.StorageOpts{
-			WriteQueueSize:    1000,
-			ReadWorkersCount:  500,
-			ReadQueueSize:     1000,
-			Directory:         t.TempDir(),
+			Directory:         tempDir,
 			MemtableThreshold: MEMTABLE_THRESHOLD,
 			TurnOnCompaction:  true,
-			GCLogDir:          t.TempDir(),
+			GCLogDir:          tempDir,
 		})
 
 	d := types.IntValue{V: 0}
@@ -113,6 +112,7 @@ func BenchmarkMemtable_Intensive_Write(t *testing.B) {
 		memtable.MemtableOpts{
 			MemtableSoftLimit: MEMTABLE_THRESHOLD,
 			LogDir:            temp,
+			TurnOnWal:         false,
 		})
 	d := types.IntValue{V: 0}
 
