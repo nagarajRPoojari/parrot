@@ -11,20 +11,29 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
 
+// StorageOpts defines configuration options for the storage engine.
 type StorageOpts struct {
+	// Root directory where all data (WALs, SSTables, manifests) will be stored
 	Directory string
 
-	// memtable opts
+	// Memtable configuration
+	// Threshold (in bytes) after which the active memtable is flushed to disk
 	MemtableThreshold int
-	QueueHardLimit    int
-	QueueSoftLimit    int
+	// Maximum number of memtables allowed in flush queue before blocking writes
+	QueueHardLimit int
+	// Soft limit to trigger proactive flushing before hitting the hard limit
+	QueueSoftLimit int
 
-	// compaction opts
+	// Compaction configuration
+	// Enables background compaction and garbage collection
 	TurnOnCompaction bool
-	GCLogDir         string
+	// Directory to store compaction-related WALs or logs
+	GCLogDir string
 
-	// wal opts
+	// Write-Ahead Log configuration
+	// Enables WAL for durability of writes
 	TurnOnWal bool
+	// Directory to store WAL files
 	WalLogDir string
 }
 
@@ -50,7 +59,7 @@ func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, op
 		gc := compactor.NewGC(
 			v.manifest,
 			(*cache.CacheManager[types.IntKey, types.IntValue])(v.store.DecoderCache),
-			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1024 * 2, MaxSizeInBytesGrowthFactor: 2}},
+			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Level0MaxSizeInBytes: 1024 * 2, MaxSizeInBytesGrowthFactor: 2}},
 			opts.GCLogDir,
 		)
 		go gc.Run(ctx)

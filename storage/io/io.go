@@ -184,11 +184,15 @@ func (t *FileManager) OpenForAppend(path string) *FileWriter {
 	return &FileWriter{file: f}
 }
 
+// Exists checks whether the given file or directory exists on disk.
+// Returns true if the path exists and is accessible, false otherwise.
 func (t *FileManager) Exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
+// Delete removes the file or directory at the given path.
+// Returns an error if the deletion fails.
 func (t *FileManager) Delete(path string) error {
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("failed to delete %s", path)
