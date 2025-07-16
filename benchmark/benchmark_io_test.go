@@ -160,7 +160,7 @@ func BenchmarkMemtable_Write_Without_WAL(t *testing.B) {
 		memtable.MemtableOpts{
 			MemtableSoftLimit: MEMTABLE_THRESHOLD,
 			LogDir:            temp,
-			TurnOnWal:         true,
+			TurnOnWal:         false,
 		})
 	d := types.IntValue{V: 0}
 

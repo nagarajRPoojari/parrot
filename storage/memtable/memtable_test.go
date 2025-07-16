@@ -211,6 +211,7 @@ func TestMemtable_Rollback(t *testing.T) {
 		MemtableOpts{
 			MemtableSoftLimit: MEMTABLE_THRESHOLD,
 			LogDir:            temp,
+			TurnOnWal:         true,
 		},
 	)
 
