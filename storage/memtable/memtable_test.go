@@ -2,6 +2,7 @@ package memtable
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -161,6 +162,8 @@ func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 		mts.Write(types.IntKey{K: i}, types.IntValue{V: int32(i)})
 	}
 
+	fmt.Println("write ended")
+
 	// A small gap to let it flush to disk & erase
 	// further read should come from disk sst
 	time.Sleep(1000 * time.Millisecond)
@@ -168,7 +171,70 @@ func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 
 	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
 
-	for i := 0; i < totalOps; i++ {
+	for i := range totalOps {
+		wg.Add(1)
+		ticket <- struct{}{} // acquire a ticket
+		go func(i int) {
+			defer func() {
+				<-ticket // release the ticket
+				wg.Done()
+			}()
+
+			val, ok := mts.Read(types.IntKey{K: i})
+			v := types.IntValue{V: int32(i)}
+			if !ok || val != v {
+				t.Errorf("Expected %v, got %v", v, val)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func TestMemtable_Rollback(t *testing.T) {
+	log.Disable()
+
+	const MEMTABLE_THRESHOLD = 1024 * 2
+	const MAX_CONCURRENT_READ_ROUTINES = 500
+
+	temp := t.TempDir()
+	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})
+	mf.Load()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	go mf.Sync(ctx)
+
+	mts := NewMemtableStore[types.IntKey, types.IntValue](
+		mf,
+		MemtableOpts{
+			MemtableSoftLimit: MEMTABLE_THRESHOLD,
+			LogDir:            temp,
+		},
+	)
+
+	// this shouldn't trigger memtable overflow
+	totalOps := 100
+	for i := range totalOps {
+		mts.Write(types.IntKey{K: i}, types.IntValue{V: int32(i)})
+	}
+
+	wg := sync.WaitGroup{}
+
+	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
+
+	// clear all data
+
+	mts.Clear()
+
+	time.Sleep(2 * time.Second)
+	// rollback: expected to bring back all vanished data
+	mts.RollbackAll()
+
+	fmt.Println("started reading")
+
+	for i := range totalOps {
 		wg.Add(1)
 		ticket <- struct{}{} // acquire a ticket
 		go func(i int) {

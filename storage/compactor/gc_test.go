@@ -33,6 +33,7 @@ func TestGC(t *testing.T) {
 		mf,
 		(*cache.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
 		&SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1000, MaxSizeInBytesGrowthFactor: 10}},
+		tempDir,
 	)
 	go gc.Run(ctx)
 
@@ -93,6 +94,7 @@ func TestGC_Intensive(t *testing.T) {
 				MaxSizeInBytesGrowthFactor: 2,                      // growth_factor = 2
 			},
 		},
+		tempDir,
 	)
 	go gc.Run(ctx)
 

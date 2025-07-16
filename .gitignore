@@ -5,4 +5,4 @@ prof
 *.test
 *.out
 *.json
-.log
+*.log

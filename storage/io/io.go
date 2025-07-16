@@ -33,6 +33,15 @@ type FileWriter struct {
 	file *os.File
 }
 
+func (t *FileWriter) Truncate(size int64) error {
+	if err := t.file.Truncate(size); err != nil {
+		return err
+	}
+
+	_, err := t.file.Seek(0, 0)
+	return err
+}
+
 func (t *FileWriter) GetFile() *os.File {
 	return t.file
 }

@@ -20,6 +20,7 @@ type StorageOpts struct {
 
 	MemtableThreshold int
 	TurnOnCompaction  bool
+	GCLogDir          string
 }
 
 type Storage[K types.Key, V types.Value] struct {
@@ -53,6 +54,7 @@ func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, op
 			v.manifest,
 			(*cache.CacheManager[types.IntKey, types.IntValue])(v.store.DecoderCache),
 			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Levle0MaxSizeInBytes: 1024 * 2, MaxSizeInBytesGrowthFactor: 2}},
+			opts.GCLogDir,
 		)
 		go gc.Run(ctx)
 	}

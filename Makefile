@@ -31,10 +31,10 @@ clean:
 benchmark:
 ifeq ($(filter read,$(MAKECMDGOALS)),read)
 	@echo "Running read benchmark..."
-	go test -bench=BenchmarkMemtable_Intensive_Read -memprofile=mem.out ./benchmark
+	go test -bench=BenchmarkMemtable_Intensive_Read -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
 else ifeq ($(filter write,$(MAKECMDGOALS)),write)
 	@echo "Running write benchmark..."
-	go test -bench=BenchmarkMemtable_Intensive_Write -memprofile=mem.out ./benchmark
+	go test -bench=BenchmarkMemtable_Intensive_Write -memprofile=mem.out -cpuprofile=cpu.out ./benchmark
 else
 	@echo "Usage: make benchmark read | write"
 endif
@@ -49,3 +49,6 @@ mem_prof:
 
 go_prof:
 	go tool pprof ./benchmark.test goroutine.prof
+
+cpu_prof:
+	go tool pprof ./benchmark.test cpu.out

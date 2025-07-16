@@ -42,9 +42,10 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 			WriteQueueSize:    1000,
 			ReadWorkersCount:  500,
 			ReadQueueSize:     1000,
-			Directory:         ".",
+			Directory:         t.TempDir(),
 			MemtableThreshold: MEMTABLE_THRESHOLD,
 			TurnOnCompaction:  true,
+			GCLogDir:          t.TempDir(),
 		})
 
 	d := types.IntValue{V: 0}
@@ -97,8 +98,8 @@ func BenchmarkMemtable_Intensive_Read(t *testing.B) {
 func BenchmarkMemtable_Intensive_Write(t *testing.B) {
 	log.Disable()
 
-	const MEMTABLE_THRESHOLD = 1024 * 2
-	temp := t.TempDir()
+	const MEMTABLE_THRESHOLD = 1024 * 2 * 1024
+	temp := "test"
 	mf := metadata.NewManifest("test", metadata.ManifestOpts{Dir: temp})
 	mf.Load()
 
@@ -108,7 +109,11 @@ func BenchmarkMemtable_Intensive_Write(t *testing.B) {
 	go mf.Sync(ctx)
 
 	// overflow first memtable to trigger flush
-	mts := memtable.NewMemtableStore[types.IntKey, types.IntValue](mf, memtable.MemtableOpts{MemtableSoftLimit: MEMTABLE_THRESHOLD})
+	mts := memtable.NewMemtableStore[types.IntKey, types.IntValue](mf,
+		memtable.MemtableOpts{
+			MemtableSoftLimit: MEMTABLE_THRESHOLD,
+			LogDir:            temp,
+		})
 	d := types.IntValue{V: 0}
 
 	multiples := 10
@@ -125,6 +130,7 @@ func BenchmarkMemtable_Intensive_Write(t *testing.B) {
 	opsPerSec := float64(totalOps) / elapsed.Seconds()
 	t.Logf("Total time taken: %v, Ops/sec: %.2fM", elapsed, opsPerSec/MILLION)
 
+	// cleanDirectory(temp)
 	dumpGoroutines()
 }
 
@@ -135,4 +141,19 @@ func dumpGoroutines() {
 	}
 	defer f.Close()
 	pprof.Lookup("goroutine").WriteTo(f, 1)
+}
+
+func cleanDirectory(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		path := dir + string(os.PathSeparator) + entry.Name()
+		err := os.RemoveAll(path)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

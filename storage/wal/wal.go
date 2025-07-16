@@ -1,17 +1,19 @@
 package wal
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/gob"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 
-	"os"
 	"sync"
 
 	customerr "github.com/nagarajRPoojari/lsm/storage/errors"
+
 	fio "github.com/nagarajRPoojari/lsm/storage/io"
 )
 
@@ -19,13 +21,40 @@ type Event interface {
 }
 
 type WAL[E Event] struct {
-	mu      sync.Mutex
-	file    *os.File
-	encoder *gob.Encoder
+	mu         sync.Mutex
+	path       string
+	fileWriter *fio.FileWriter
+	encoder    *gob.Encoder
+
+	bufferedWriter *bufio.Writer
 
 	eventCh chan E
 	closeCh chan struct{}
 	wg      sync.WaitGroup
+
+	once sync.Once
+}
+
+func NewWAL[E Event](path string) (*WAL[E], error) {
+
+	fm := fio.GetFileManager()
+	fw := fm.OpenForAppend(path)
+
+	bw := bufio.NewWriterSize(fw.GetFile(), 4*1024*1024)
+	w := &WAL[E]{
+		fileWriter:     fw,
+		path:           path,
+		eventCh:        make(chan E, 1024),
+		closeCh:        make(chan struct{}),
+		encoder:        gob.NewEncoder(bw),
+		once:           sync.Once{},
+		bufferedWriter: bw,
+	}
+
+	w.wg.Add(1)
+	go w.run()
+
+	return w, nil
 }
 
 func Replay[E Event](path string) ([]E, error) {
@@ -33,6 +62,7 @@ func Replay[E Event](path string) ([]E, error) {
 	if !fm.Exists(path) {
 		return nil, customerr.FileNotFoundError
 	}
+
 	fr, err := fm.OpenForRead(path)
 	if err != nil {
 		return nil, err
@@ -53,25 +83,8 @@ func Replay[E Event](path string) ([]E, error) {
 		}
 		events = append(events, entry)
 	}
+
 	return events, nil
-}
-
-func NewWAL[E Event](path string) (*WAL[E], error) {
-
-	fm := fio.GetFileManager()
-	fw := fm.OpenForAppend(path)
-
-	w := &WAL[E]{
-		file:    fw.GetFile(),
-		eventCh: make(chan E, 1024),
-		closeCh: make(chan struct{}),
-		encoder: gob.NewEncoder(fw.GetFile()),
-	}
-
-	w.wg.Add(1)
-	go w.run()
-
-	return w, nil
 }
 
 func (w *WAL[E]) Append(entry E) {
@@ -79,12 +92,21 @@ func (w *WAL[E]) Append(entry E) {
 }
 
 func (t *WAL[E]) run() {
+	flushTicker := time.NewTicker(100 * time.Microsecond)
+	defer flushTicker.Stop()
+
 	for {
 		select {
 		case event := <-t.eventCh:
 			t.write(event)
+
+		case <-flushTicker.C:
+			if err := t.flush(); err != nil {
+			}
+
 		case <-t.closeCh:
 			t.drain()
+			t.flush() // final flush before exiting
 			return
 		}
 	}
@@ -101,13 +123,29 @@ func (t *WAL[E]) write(entry Event) {
 
 }
 
+func (t *WAL[E]) flush() error {
+	if err := t.bufferedWriter.Flush(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *WAL[E]) Truncate() {
+	t.fileWriter.Truncate(0)
+}
+
+func (t *WAL[E]) Delete() {
+	fm := fio.GetFileManager()
+	fm.Delete(t.path)
+}
+
 func (t *WAL[E]) drain() {
 	for {
 		select {
 		case event := <-t.eventCh:
 			t.write(event)
 		default:
-			t.file.Close()
+			t.fileWriter.Close()
 			return
 		}
 	}
