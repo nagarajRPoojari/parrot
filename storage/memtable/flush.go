@@ -51,10 +51,14 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 	manager := io.GetFileManager()
 	l0, _ := t.mf.GetLSM().GetLevel(0)
 	nextId := l0.GetNextId()
-	path := t.mf.FormatPath(0, nextId)
+	dbPath := t.mf.FormatDBPath(0, nextId)
+	indexPath := t.mf.FormatIndexPath(0, nextId)
 
-	wt := manager.OpenForWrite(path)
-	defer wt.Close()
+	dbWriter := manager.OpenForWrite(dbPath)
+	defer dbWriter.Close()
+
+	indexWriter := manager.OpenForWrite(indexPath)
+	defer indexWriter.Close()
 
 	// order of update:
 	//	-	write new table to level-0
@@ -64,17 +68,17 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 
 	// write new table to disk (level-0)
 	pls, totalSizeInBytes := mem.BuildPayloadList()
-	err := utils.Encode(wt.GetFile(), pls)
+	err := utils.Encode(dbWriter.GetFile(), indexWriter.GetFile(), pls)
 	if err != nil {
 		log.Panicf("failed to encode & store, error=%v", err)
 	}
 
 	// Ensure all buffered data is flushed to disk through fsync system call
-	wt.GetFile().Sync()
+	dbWriter.GetFile().Sync()
 
 	// append new table to level-0
 	lvl, _ := t.mf.GetLSM().GetLevel(0)
-	lvl.SetSSTable(nextId, metadata.NewSSTable(path, totalSizeInBytes))
+	lvl.SetSSTable(nextId, metadata.NewSSTable(dbPath, indexPath, totalSizeInBytes))
 
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
@@ -88,5 +92,5 @@ func (t *Flusher[K, V]) flush(mem *Memtable[K, V]) {
 		mem.wal.Delete()
 	}
 
-	log.Infof("deleted memtable at %s", path)
+	log.Infof("deleted memtable at %s", dbPath)
 }

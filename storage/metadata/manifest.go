@@ -90,12 +90,20 @@ func (t *Manifest) Sync(ctx context.Context) error {
 	}
 }
 
-func (t *Manifest) FormatPath(l, i int) string {
+func (t *Manifest) FormatDBPath(l, i int) string {
 	if l < 0 || i < 0 {
 		return ""
 	}
 
 	return path.Join(t.opts.Dir, t.lsm0.GetName(), fmt.Sprintf("level-%d", l), fmt.Sprintf("sst-%d.db", i))
+}
+
+func (t *Manifest) FormatIndexPath(l, i int) string {
+	if l < 0 || i < 0 {
+		return ""
+	}
+
+	return path.Join(t.opts.Dir, t.lsm0.GetName(), fmt.Sprintf("level-%d", l), fmt.Sprintf("sst-%d.index", i))
 }
 
 func (t *Manifest) FormatLevelPath(l int) string {

@@ -1,12 +1,13 @@
 package metadata
 
 type SSTable struct {
-	Path        string
+	DBPath      string
+	IndexPath   string
 	SizeInBytes int64
 }
 
-func NewSSTable(path string, sizeInBytes int64) *SSTable {
-	return &SSTable{Path: path, SizeInBytes: sizeInBytes}
+func NewSSTable(dBPath string, indexPath string, sizeInBytes int64) *SSTable {
+	return &SSTable{DBPath: dBPath, IndexPath: indexPath, SizeInBytes: sizeInBytes}
 }
 
 // SSTable snapshot
@@ -15,10 +16,11 @@ func NewSSTable(path string, sizeInBytes int64) *SSTable {
 // Warning!: it is not advised to modify snapshot views
 
 type SSTableView struct {
-	Path        string `json:"path"`
+	DBPath      string `json:"dBPath"`
+	IndexPath   string `json:"indexPath"`
 	SizeInBytes int64  `json:"size"`
 }
 
-func NewSSTableView(path string, sizeInBytes int64) SSTable {
-	return SSTable{Path: path, SizeInBytes: sizeInBytes}
+func NewSSTableView(DBPath string, IndexPath string, sizeInBytes int64) SSTable {
+	return SSTable{DBPath: DBPath, IndexPath: IndexPath, SizeInBytes: sizeInBytes}
 }
