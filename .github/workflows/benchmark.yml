@@ -1,0 +1,34 @@
+name: Go Benchmark
+
+on:
+  push:        
+  pull_request: 
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.4'  
+
+    - name: Download Go modules
+      run: go mod download
+
+    - name: Run benchmarks
+      id: run_benchmark
+      run: |
+        make benchmark read > benchmark.txt
+        make benchmark write >> benchmark.txt
+        cat benchmark.txt
+
+    - name: Comment benchmark results on PR
+      if: github.event_name == 'pull_request'
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        path: benchmark.txt
