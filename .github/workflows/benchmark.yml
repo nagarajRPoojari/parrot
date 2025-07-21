@@ -51,7 +51,9 @@ jobs:
 
     - name: Comment benchmark results on PR
       if: github.event_name == 'pull_request'
-      uses: marocchino/sticky-pull-request-comment@v2
+      uses: peter-evans/create-or-update-comment@v4
       with:
-        path: benchmark.md
-  
+        token: ${{ secrets.GITHUB_TOKEN }}
+        issue-number: ${{ github.event.pull_request.number }}
+        body-path: benchmark.md
+        comment-id: 0
