@@ -33,11 +33,16 @@ jobs:
         make benchmark write >> full_benchmark.log
 
         awk '
-          /BenchmarkMemtable_/ { benchmark=$1 }
+          /^BenchmarkMemtable_/ { 
+            match($1, /^Benchmark[^-]+/, m); 
+            if (m[0] != "") {
+              benchmark = m[0]
+            }
+          }
           /Ops\/sec:/ {
-            match($0, /Ops\/sec: ([0-9.]+[MK]?)/, m)
-            if (m[1] != "") {
-              printf "| %s | %s |\n", benchmark, m[1]
+            match($0, /Ops\/sec: ([0-9.]+[MK]?)/, m2)
+            if (benchmark != "" && m2[1] != "") {
+              printf "| %s | %s |\n", benchmark, m2[1]
             }
           }
         ' full_benchmark.log >> benchmark.md
