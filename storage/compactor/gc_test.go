@@ -135,12 +135,12 @@ func TestGC_Intensive(t *testing.T) {
 		t.Errorf("Expected %v, got %v", v, val)
 	}
 
-	// level3Path := fmt.Sprintf("%s/test/level-2", tempDir)
-	// entries, err := os.ReadDir(level3Path)
-	// if err != nil {
-	// 	t.Errorf("Expected to read %s, got error: %v", level3Path, err)
-	// }
-	// if len(entries) == 0 {
-	// 	t.Errorf("Expected %s to be non-empty, but it is empty", level3Path)
-	// }
+	level3Path := fmt.Sprintf("%s/test/level-3", tempDir)
+	entries, err := os.ReadDir(level3Path)
+	if err != nil {
+		t.Errorf("Expected to read %s, got error: %v", level3Path, err)
+	}
+	if len(entries) == 0 {
+		t.Errorf("Expected %s to be non-empty, but it is empty", level3Path)
+	}
 }
