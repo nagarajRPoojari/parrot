@@ -6,4 +6,5 @@ prof
 *.out
 *.json
 *.log
+*.txt
 *.index

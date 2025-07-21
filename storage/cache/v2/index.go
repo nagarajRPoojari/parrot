@@ -112,19 +112,28 @@ func (dc *CacheUnit[K, V]) GetDecodedForKey(key K) (types.Payload[K, V], error) 
 		return types.Payload[K, V]{}, dc.err
 	}
 
-	for _, k := range dc.indexDecoded {
-		if k.Key == key {
-			// Validate range
-			if int(k.Offset+k.Size) > len(dc.dbPayload) {
-				return types.Payload[K, V]{}, fmt.Errorf("index out of bounds for key %v", key)
-			}
+	left, mid, right := 0, 0, len(dc.indexDecoded)
 
-			valDecoder := gob.NewDecoder(bytes.NewReader(dc.dbPayload[k.Offset : k.Offset+k.Size]))
-			var entry types.Payload[K, V]
-			if err := valDecoder.Decode(&entry); err != nil {
-				return types.Payload[K, V]{}, fmt.Errorf("failed to decode value for key %v: %w", key, err)
+	for left <= right {
+		mid = left + (right-left)/2
+		midK := dc.indexDecoded[mid]
+		if midK.Key.Less(key) {
+			left = mid + 1
+		} else {
+			if midK.Key == key {
+				if int(midK.Offset+midK.Size) > len(dc.dbPayload) {
+					return types.Payload[K, V]{}, fmt.Errorf("index out of bounds for key %v", key)
+				}
+
+				valDecoder := gob.NewDecoder(bytes.NewReader(dc.dbPayload[midK.Offset : midK.Offset+midK.Size]))
+				var entry types.Payload[K, V]
+				if err := valDecoder.Decode(&entry); err != nil {
+					return types.Payload[K, V]{}, fmt.Errorf("failed to decode value for key %v: %w", key, err)
+				}
+				return entry, nil
+			} else {
+				right = mid - 1
 			}
-			return entry, nil
 		}
 	}
 
