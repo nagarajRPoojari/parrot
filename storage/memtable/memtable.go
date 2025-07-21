@@ -3,6 +3,7 @@ package memtable
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 	"github.com/nagarajRPoojari/lsm/storage/wal"
 
-	"github.com/nagarajRPoojari/lsm/storage/cache"
+	v2 "github.com/nagarajRPoojari/lsm/storage/cache/v2"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/types"
 )
@@ -133,7 +134,7 @@ type MemtableStore[K types.Key, V types.Value] struct {
 	flusher *Flusher[K, V]
 
 	// Cache for decoded values to speed up reads
-	DecoderCache *cache.CacheManager[K, V]
+	DecoderCache *v2.CacheManager[K, V]
 
 	opts MemtableOpts
 }
@@ -157,7 +158,7 @@ func NewMemtableStore[K types.Key, V types.Value](mf *metadata.Manifest, opts Me
 		opts:         opts,
 		flusher:      flusher,
 		memNode:      node,
-		DecoderCache: cache.NewCacheManager[K, V](),
+		DecoderCache: v2.NewCacheManager[K, V](),
 	}
 
 	memStore.RollbackAll()
@@ -268,14 +269,21 @@ func (t *MemtableStore[K, V]) Read(key K) (V, bool) {
 
 	for level != nil {
 		for _, table := range level.GetTables() {
-			l, _ := t.DecoderCache.Get(table.Path)
+			val, _ := t.DecoderCache.Get(table.DBPath, table.IndexPath, key)
 			// @todo: use min/max lookup to avoid full table search
-			for _, k := range l {
-				if k.Key == key {
-					return k.Val, true
-				}
+			// for _, k := range l {
+			// 	if k.Key == key {
+			// 		return k.Val, true
+			// 	}
+			// }
+
+			if val.Key == key {
+				return val.Val, true
 			}
 
+			if reflect.DeepEqual(val, types.Payload[K, V]{}) {
+				continue
+			}
 		}
 		cnt++
 		level, _ = t.mf.GetLSM().GetLevel(cnt)

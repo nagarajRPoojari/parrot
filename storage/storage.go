@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 
-	"github.com/nagarajRPoojari/lsm/storage/cache"
+	v2 "github.com/nagarajRPoojari/lsm/storage/cache/v2"
 	"github.com/nagarajRPoojari/lsm/storage/compactor"
 	"github.com/nagarajRPoojari/lsm/storage/errors"
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
@@ -58,7 +58,7 @@ func NewStorage[K types.Key, V types.Value](name string, ctx context.Context, op
 
 		gc := compactor.NewGC(
 			v.manifest,
-			(*cache.CacheManager[types.IntKey, types.IntValue])(v.store.DecoderCache),
+			(*v2.CacheManager[types.IntKey, types.IntValue])(v.store.DecoderCache),
 			&compactor.SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: compactor.SizeTiredCompactionOpts{Level0MaxSizeInBytes: 1024 * 2, MaxSizeInBytesGrowthFactor: 2}},
 			opts.GCLogDir,
 		)

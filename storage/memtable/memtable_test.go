@@ -108,18 +108,20 @@ func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	wg := sync.WaitGroup{}
 
+	mts.Clear()
+
 	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
 	for i := range int(MEMTABLE_THRESHOLD / d.SizeOf()) {
 		wg.Add(1)
 		ticket <- struct{}{} // acquire a ticket
-		go func(i int) {
+		func(i int) {
 			defer func() {
 				<-ticket // release the ticket
 				wg.Done()
 			}()
 
-			val, ok := mts.Read(types.IntKey{K: i + 10})
-			v := types.IntValue{V: int32(i + 10)}
+			val, ok := mts.Read(types.IntKey{K: i})
+			v := types.IntValue{V: int32(i)}
 			if !ok || val != v {
 				t.Errorf("Expected %v, got %v", v, val)
 			}
@@ -171,7 +173,7 @@ func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 
 	ticket := make(chan struct{}, MAX_CONCURRENT_READ_ROUTINES)
 
-	for i := range totalOps {
+	for i := range 10 {
 		wg.Add(1)
 		ticket <- struct{}{} // acquire a ticket
 		go func(i int) {

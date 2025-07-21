@@ -9,7 +9,7 @@ import (
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 	"github.com/nagarajRPoojari/lsm/storage/wal"
 
-	"github.com/nagarajRPoojari/lsm/storage/cache"
+	v2 "github.com/nagarajRPoojari/lsm/storage/cache/v2"
 	"github.com/nagarajRPoojari/lsm/storage/io"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/types"
@@ -36,7 +36,7 @@ type GC[K types.Key, V types.Value] struct {
 	mf *metadata.Manifest
 
 	// Cache for decoded key-value pairs to accelerate reads during compaction
-	cache *cache.CacheManager[K, V]
+	cache *v2.CacheManager[K, V]
 
 	// Compaction strategy: e.g Level, Size
 	strategy CompactionStrategy[K, V]
@@ -45,7 +45,7 @@ type GC[K types.Key, V types.Value] struct {
 	wal *wal.WAL[Event]
 }
 
-func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *cache.CacheManager[K, V], strategy CompactionStrategy[K, V], logDir string) *GC[K, V] {
+func NewGC[K types.Key, V types.Value](mf *metadata.Manifest, cache *v2.CacheManager[K, V], strategy CompactionStrategy[K, V], logDir string) *GC[K, V] {
 	logPath := filepath.Join(logDir, "gc-wal.log")
 	wl, _ := wal.NewWAL[Event](logPath)
 
@@ -105,7 +105,7 @@ type CompactionStrategyOpts interface {
 }
 
 type CompactionStrategy[K types.Key, V types.Value] interface {
-	Run(*metadata.Manifest, *cache.CacheManager[K, V], *wal.WAL[Event], int)
+	Run(*metadata.Manifest, *v2.CacheManager[K, V], *wal.WAL[Event], int)
 }
 
 type SizeTiredCompactionOpts struct {
@@ -124,7 +124,7 @@ type SizeTiredCompaction[K types.Key, V types.Value] struct {
 	Opts SizeTiredCompactionOpts
 }
 
-func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.CacheManager[K, V], wal *wal.WAL[Event], l int) {
+func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *v2.CacheManager[K, V], wal *wal.WAL[Event], l int) {
 	levelL, err := mf.GetLSM().GetLevel(l)
 	if err != nil {
 		return
@@ -141,6 +141,7 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		// keeping track of all read ssts id & file, (for deletion)
 		l0TablesIds := []int{}
 		l0TablePaths := []string{}
+		l0TableIndexPaths := []string{}
 
 		sstList := make([][]types.Payload[K, V], tablesCount)
 
@@ -152,9 +153,9 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 
 		// Load all sst from level=l
 		for id, table := range levelL.GetTables() {
-			sst, err := cache.Get(table.Path)
+			sst, err := cache.GetFullPayload(table.DBPath, table.IndexPath)
 			if err != nil {
-				log.Panicf("failed to read sst while running gc")
+				log.Panicf("failed to read sst while running gc %v", err)
 			}
 			sstList[index] = sst
 			totalSizeInBytes += int(table.SizeInBytes)
@@ -167,7 +168,8 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 			index++
 
 			l0TablesIds = append(l0TablesIds, id)
-			l0TablePaths = append(l0TablePaths, table.Path)
+			l0TablePaths = append(l0TablePaths, table.DBPath)
+			l0TableIndexPaths = append(l0TableIndexPaths, table.IndexPath)
 		}
 
 		// K-way merge using next-pointer min heap
@@ -208,27 +210,31 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 
 		manager := io.GetFileManager()
 		l1TablesNextId := nextLevel.GetNextId()
-		path := mf.FormatPath(l+1, l1TablesNextId)
+		dbPath := mf.FormatDBPath(l+1, l1TablesNextId)
+		indexPath := mf.FormatIndexPath(l+1, l1TablesNextId)
 
-		wt := manager.OpenForWrite(path)
-		defer wt.Close()
+		dbWriter := manager.OpenForWrite(dbPath)
+		indexWriter := manager.OpenForWrite(indexPath)
+		defer dbWriter.Close()
+		defer indexWriter.Close()
 
-		wal.Append(Event{Path: path, Op: WriteStarted})
-		err = utils.Encode(wt.GetFile(), merged)
+		wal.Append(Event{Path: dbPath, Op: WriteStarted})
+		err = utils.Encode(dbWriter.GetFile(), indexWriter.GetFile(), merged)
 		if err != nil {
 			log.Fatalf("error=%v\n", err)
 		}
-		wal.Append(Event{Path: path, Op: WriteCompleted})
+		wal.Append(Event{Path: dbPath, Op: WriteCompleted})
 
 		// Ensure all buffered data is flushed to disk through fsync system call
-		wt.GetFile().Sync()
+		dbWriter.GetFile().Sync()
+		indexWriter.GetFile().Sync()
 		log.Infof("LSM address - %p %p %p\n", mf.GetLSM(), levelL, nextLevel)
 
 		// @todo: getPath & SetSSTable should be atomic
 		// for now no two go routines can SetSSTable on same level
 		// - only gc can append table for level > 0
 		// - only flusher can append table for lebel = 0
-		nextLevel.SetSSTable(l1TablesNextId, metadata.NewSSTable(path, int64(totalSizeInBytes)))
+		nextLevel.SetSSTable(l1TablesNextId, metadata.NewSSTable(dbPath, indexPath, int64(totalSizeInBytes)))
 
 		// clearing only read tables
 		levelL.Clear(l0TablesIds)
@@ -237,6 +243,14 @@ func (t *SizeTiredCompaction[K, V]) Run(mf *metadata.Manifest, cache *cache.Cach
 		// - Fortunately, the OS will not actually remove the files from disk
 		//   until all file descriptors referencing them are closed.
 		for _, path := range l0TablePaths {
+			wal.Append(Event{Path: path, Op: DeleteStarted})
+			if err := manager.Delete(path); err != nil {
+				log.Panicf("failed to delete %s, got error=%v", path, err)
+			}
+			wal.Append(Event{Path: path, Op: DeleteCompleted})
+		}
+
+		for _, path := range l0TableIndexPaths {
 			wal.Append(Event{Path: path, Op: DeleteStarted})
 			if err := manager.Delete(path); err != nil {
 				log.Panicf("failed to delete %s, got error=%v", path, err)

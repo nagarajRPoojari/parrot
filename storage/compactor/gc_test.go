@@ -9,7 +9,7 @@ import (
 
 	"github.com/nagarajRPoojari/lsm/storage/utils/log"
 
-	"github.com/nagarajRPoojari/lsm/storage/cache"
+	v2 "github.com/nagarajRPoojari/lsm/storage/cache/v2"
 	"github.com/nagarajRPoojari/lsm/storage/memtable"
 	"github.com/nagarajRPoojari/lsm/storage/metadata"
 	"github.com/nagarajRPoojari/lsm/storage/types"
@@ -38,7 +38,7 @@ func TestGC(t *testing.T) {
 
 	gc := NewGC(
 		mf,
-		(*cache.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
+		(*v2.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
 		&SizeTiredCompaction[types.IntKey, types.IntValue]{Opts: SizeTiredCompactionOpts{Level0MaxSizeInBytes: 1000, MaxSizeInBytesGrowthFactor: 10}},
 		tempDir,
 	)
@@ -101,7 +101,7 @@ func TestGC_Intensive(t *testing.T) {
 
 	gc := NewGC(
 		mf,
-		(*cache.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
+		(*v2.CacheManager[types.IntKey, types.IntValue])(mts.DecoderCache),
 		&SizeTiredCompaction[types.IntKey, types.IntValue]{
 			Opts: SizeTiredCompactionOpts{
 				Level0MaxSizeInBytes:       2 * MEMTABLE_THRESHOLD, // softlimit = 2kb
