@@ -139,7 +139,7 @@ func TestMemtable_Write_With_Multiple_Reader(t *testing.T) {
 func TestMemtable_Intensive_Write_And_Read(t *testing.T) {
 	log.Disable()
 
-	const MEMTABLE_THRESHOLD = 1024 * 2 * 1024
+	const MEMTABLE_THRESHOLD = 1024 * 2
 	const MAX_CONCURRENT_READ_ROUTINES = 500
 
 	temp := t.TempDir()
