@@ -1,3 +1,9 @@
+name: Go Benchmark
+
+on:
+  push:        
+  pull_request: 
+
 permissions:
   pull-requests: write
   contents: read
@@ -43,3 +49,4 @@ jobs:
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         path: benchmark.md
+  
