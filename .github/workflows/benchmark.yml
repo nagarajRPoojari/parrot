@@ -1,9 +1,3 @@
-name: Go Benchmark
-
-on:
-  push:        
-  pull_request: 
-
 permissions:
   pull-requests: write
   contents: read
@@ -19,20 +13,33 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.4'  
+        go-version: '1.22'
 
-    - name: Download Go modules
+    - name: Install deps
       run: go mod download
 
-    - name: Run benchmarks
-      id: run_benchmark
+    - name: Run benchmarks and format results
       run: |
-        make benchmark read > benchmark.txt
-        make benchmark write >> benchmark.txt
-        cat benchmark.txt
+        echo "| Benchmark | Ops/sec |" > benchmark.md
+        echo "|-----------|---------|" >> benchmark.md
+
+        make benchmark read > full_benchmark.log
+        make benchmark write >> full_benchmark.log
+
+        awk '
+          /BenchmarkMemtable_/ { benchmark=$1 }
+          /Ops\/sec:/ {
+            match($0, /Ops\/sec: ([0-9.]+[MK]?)/, m)
+            if (m[1] != "") {
+              printf "| %s | %s |\n", benchmark, m[1]
+            }
+          }
+        ' full_benchmark.log >> benchmark.md
+
+        cat benchmark.md
 
     - name: Comment benchmark results on PR
       if: github.event_name == 'pull_request'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        path: benchmark.txt
+        path: benchmark.md
