@@ -32,7 +32,7 @@ func BenchmarkMemtable_Read(t *testing.B) {
 
 	tempDir := "."
 
-	const MEMTABLE_THRESHOLD = 1024 * 2
+	const MEMTABLE_THRESHOLD = 1024 * 4 * 1024
 	const MAX_CONCURRENT_READ_ROUTINES = 500
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
